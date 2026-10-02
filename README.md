@@ -12,12 +12,14 @@ Proyecto de Práctica Supervisada. Plataforma de e-commerce de insumos de higien
 
 ## Estructura del Proyecto
 
-- `app/`: Rutas, Layouts, Pages y API handlers (Next.js App Router).
-- `components/`: Componentes de UI modulares y reutilizables (`ui/`, `layout/`, `product/`).
-- `lib/`: Utilidades, servicios, validaciones y repositorios (`actions/`, `services/`, `utils/`, etc.).
-- `prisma/`: Esquema de la base de datos y migraciones.
-- `scripts/`: Scripts de utilidad (ej. `seed.ts` para carga inicial desde Excel).
-- `types/`: Definiciones de tipos globales.
+El código se encuentra organizado de forma modular y auto-explicativa en carpetas de propósito único:
+
+- `frontend/`: Componentes de interfaz de usuario (`components/ui`, `layout`, `home`, `product`), datos de demostración (`mock/`), estilos globales (`styles/`), tipos de vista (`types/`) y funciones utilitarias (`utils/`).
+- `backend/`: Capa de servidor y datos: cliente y esquemas Prisma (`db/`, `prisma/`), autenticación Auth.js (`auth/`), servicios de negocio (`services/`), acceso a datos (`repositories/`) y esquemas de validación Zod (`validations/`).
+- `middleware/`: Capa de integración y sincronización con el sistema de gestión local de Higiene Uruguay. Aloja los archivos de datos (`data/`), parsers de Excel (`parsers/`) y scripts de sincronización/seed (`scripts/`).
+- `docs/`: Documentación académica y de negocio del proyecto (Plan de Trabajo y Propuesta de Proyecto).
+- `app/`: Enrutador mínimo de Next.js App Router (Layouts, Páginas y API handlers).
+- `public/`: Recursos estáticos (Logotipos de la tienda, banners de ambientación y logos de marcas).
 
 ## Configuración y Ejecución Local
 

@@ -1,0 +1,19 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 60" width="200" height="60">
+  <defs>
+    <linearGradient id="cifGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#008E44" />
+      <stop offset="100%" stop-color="#005A2B" />
+    </linearGradient>
+    <filter id="cifShadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="2" stdDeviation="2" flood-opacity="0.2"/>
+    </filter>
+  </defs>
+  <rect x="6" y="8" width="188" height="44" rx="22" fill="url(#cifGrad)" />
+  <!-- Sparkle highlight -->
+  <path d="M 40 18 Q 45 22 40 26 Q 35 22 40 18 Z" fill="#78D64B" opacity="0.9" />
+  <circle cx="162" cy="18" r="3" fill="#FFFFFF" opacity="0.7" />
+  <!-- Cif Text -->
+  <text x="100" y="39" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="34" font-weight="900" font-style="italic" fill="#FFFFFF" text-anchor="middle" letter-spacing="-1">Cif</text>
+  <!-- Clean Power Subtitle/Badge -->
+  <circle cx="148" cy="22" r="3.5" fill="#FFDD00" />
+</svg>

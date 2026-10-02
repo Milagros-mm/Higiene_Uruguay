@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 60" width="200" height="60">
+  <defs>
+    <linearGradient id="ayudinBg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0052A3" />
+      <stop offset="100%" stop-color="#002D62" />
+    </linearGradient>
+  </defs>
+  <!-- Oval brand badge -->
+  <ellipse cx="100" cy="30" rx="90" ry="24" fill="url(#ayudinBg)" stroke="#E31837" stroke-width="2.5" />
+  <!-- Red dynamic top banner arc -->
+  <path d="M 25 24 Q 100 12 175 24" fill="none" stroke="#E31837" stroke-width="2" opacity="0.6" />
+  <!-- Ayudin text -->
+  <text x="100" y="38" font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="28" font-weight="900" font-style="italic" fill="#FFFFFF" text-anchor="middle" letter-spacing="0.5">AYUDÍN</text>
+  <!-- Yellow Sparkle / Accent -->
+  <polygon points="160,20 162,25 167,26 163,29 164,34 160,31 156,34 157,29 153,26 158,25" fill="#FFE500" />
+</svg>

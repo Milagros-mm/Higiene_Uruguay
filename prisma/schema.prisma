@@ -7,35 +7,40 @@ generator client {
   provider = "prisma-client-js"
 }
 
-// --- Auth.js Models ---
-model User {
-  id            String    @id @default(cuid())
-  name          String?
-  email         String?   @unique
-  emailVerified DateTime?
-  image         String?
-  password      String?
-  accounts      Account[]
-  sessions      Session[]
-  orders        Order[]
+// =========================================================================
+// 1. USUARIOS Y AUTENTICACIÓN (Auth.js para clientes y panel admin)
+// =========================================================================
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+model User {
+  id            String    @id @default(cuid()) // Identificador único de usuario
+  name          String?                        // Nombre y apellido
+  email         String?   @unique              // Correo electrónico (único para login)
+  emailVerified DateTime?                      // Fecha de verificación de email
+  image         String?                        // Foto de perfil
+  password      String?                        // Contraseña cifrada (para login con usuario/clave)
+  role          String    @default("CUSTOMER") // Rol: "ADMIN" (dueños) o "CUSTOMER" (clientes)
+  
+  accounts      Account[]                      // Cuentas vinculadas (Google, etc.)
+  sessions      Session[]                      // Sesiones activas del usuario
+  orders        Order[]                        // Historial de pedidos que realizó este usuario
+
+  createdAt     DateTime  @default(now())      // Fecha de registro
+  updatedAt     DateTime  @updatedAt          // Fecha de última modificación
 }
 
 model Account {
-  id                 String  @id @default(cuid())
-  userId             String
-  type               String
-  provider           String
-  providerAccountId  String
-  refresh_token      String?  @db.Text
-  access_token       String?  @db.Text
-  expires_at         Int?
-  token_type         String?
-  scope              String?
-  id_token           String?  @db.Text
-  session_state      String?
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -58,103 +63,149 @@ model VerificationToken {
   @@unique([identifier, token])
 }
 
-// --- Domain Models ---
+// =========================================================================
+// 2. CATÁLOGO: CATEGORÍAS
+// =========================================================================
 
 model Category {
-  id       String    @id @default(cuid())
-  name     String
-  slug     String    @unique
-  imageUrl String?
-  order    Int       @default(0)
-  products Product[]
+  id          String    @id @default(cuid()) // ID único de la categoría en la web
+  name        String                         // Nombre visible (ej: "Lavandería", "Química Pesada")
+  slug        String    @unique              // Texto para la URL (ej: "lavanderia")
+  imageUrl    String?                        // Foto o icono de portada de la categoría
+  order       Int       @default(0)          // Número para ordenar las categorías en el menú
+  
+  // Campo preparado para vincular con la base local (ARUB en Stock_Articulo / stock_categori):
+  erpCode     String?   @unique              // Código de rubro en el ERP local (ej: "01")
+  
+  products    Product[]                      // Lista de productos que pertenecen a esta categoría
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 }
 
-model Product {
-  id             String         @id @default(cuid())
-  name           String
-  slug           String         @unique
-  description    String?        @db.Text
-  price          Float
-  compareAtPrice Float?
-  sku            String?
-  barcode1       String?
-  barcode2       String?
-  stock          Int            @default(0)
-  imageUrl       String?
-  categoryId     String?
-  category       Category?      @relation(fields: [categoryId], references: [id])
-  images         ProductImage[]
+// =========================================================================
+// 3. CATÁLOGO: PRODUCTOS
+// =========================================================================
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+model Product {
+  id             String         @id @default(cuid()) // ID único web del producto
+  
+  // --- Datos Comerciales Visibles en la Web ---
+  name           String                              // Nombre comercial (viene de ADES del ERP)
+  slug           String         @unique              // URL amigable (ej: "lavandina-premium-5-lts")
+  description    String?        @db.Text             // Descripción detallada, modo de uso o precauciones
+  price          Float                               // Precio final de venta (viene de AVENTA)
+  compareAtPrice Float?                              // Precio anterior tachado (opcional para promociones)
+  unit           String?                             // Presentación: "Bidón 5L", "Litro suelto", "Pack x 3"
+  brand          String?                             // Marca comercial (viene de AMAR, ej: "Higiene Uruguay")
+  imageUrl       String?                             // Foto principal del producto (alojada en Supabase Storage)
+  
+  // --- Identificadores del ERP Local (Para sincronizar sin duplicar) ---
+  sku            String?        @unique              // Código del ERP local (viene de ACOD, ej: "0100003")
+  barcode        String?                             // Código de barras (viene de ABARRA o tabla stock_barcode)
+
+  // --- Control de Stock Flexible (Resuelve sueltos vs envasados) ---
+  stock          Int            @default(0)          // Cantidad física (viene de AEXIS, para cuando lo carguen bien)
+  trackStock     Boolean        @default(false)      // false = siempre disponible (sueltos); true = frena si llega a 0
+  isBulk         Boolean        @default(false)      // true = producto a granel/suelto (ej: recarga de bidón)
+
+  // --- Control de Publicación (Soberanía Web) ---
+  isActive       Boolean        @default(true)       // true = publicado en la tienda; false = oculto
+  
+  // --- Relación con Categoría e Imágenes adicionales ---
+  categoryId     String?                             // Categoría asignada
+  category       Category?      @relation(fields: [categoryId], references: [id])
+  images         ProductImage[]                      // Fotos secundarias del producto
+
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
 }
 
 model ProductImage {
-  id        String   @id @default(cuid())
-  url       String
-  alt       String?
-  productId String
+  id        String   @id @default(cuid()) // ID de la imagen adicional
+  url       String                        // Enlace público de la foto en Supabase Storage
+  alt       String?                       // Texto descriptivo para accesibilidad y SEO
+  order     Int      @default(0)          // Orden en la galería de fotos (1, 2, 3...)
+  
+  productId String                        // Producto al que pertenece esta foto
   product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
-  order     Int      @default(0)
 
   createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+}
+
+// =========================================================================
+// 4. PEDIDOS Y CHECKOUT (Cierre de Venta)
+// =========================================================================
+
+model Order {
+  id              String       @id @default(cuid()) // Número o código único del pedido
+  
+  // --- Datos de Contacto y Entrega ---
+  customerName    String                            // Nombre y apellido de quien compra
+  customerPhone   String                            // Teléfono / WhatsApp del cliente
+  deliveryAddress String?                           // Dirección de entrega o "Retiro en local"
+  notes           String?                           // Observaciones (ej: "Llamar antes de ir")
+  
+  // --- Contenido del Pedido y Total ---
+  items           Json                              // Copia exacta del carrito al comprar (productos, precio, cant)
+  total           Float                             // Importe total final a abonar
+  
+  // --- Pago y Estados ---
+  paymentMethod   String       @default("TRANSFERENCIA") // "TRANSFERENCIA" o "EFECTIVO"
+  bankAccountId   String?                           // Cuenta bancaria asignada para la transferencia
+  bankAccount     BankAccount? @relation(fields: [bankAccountId], references: [id])
+  couponId        String?                           // Cupón de descuento aplicado (si usó uno)
+  coupon          Coupon?      @relation(fields: [couponId], references: [id])
+  status          String       @default("PENDIENTE") // "PENDIENTE", "PAGADO", "ENTREGADO", "CANCELADO"
+  
+  // --- Usuario (Opcional, permite comprar como invitado sin cuenta) ---
+  userId          String?
+  user            User?        @relation(fields: [userId], references: [id])
+
+  createdAt       DateTime     @default(now())      // Fecha y hora en que se creó el pedido
+  updatedAt       DateTime     @updatedAt
+}
+
+// =========================================================================
+// 5. HERRAMIENTAS DE COBRO Y MARKETING (Alias Bancarios y Cupones)
+// =========================================================================
+
+model BankAccount {
+  id         String   @id @default(cuid()) // ID interno de la cuenta
+  bankName   String   @default("")         // Entidad: "Banco Santander", "Mercado Pago", etc.
+  holderName String                        // Nombre y apellido del titular
+  alias      String                        // Alias para transferir (ej: "HIGIENE.URUGUAY")
+  cbu        String                        // CBU o CVU numérico
+  active     Boolean  @default(true)       // Si está activa para que el checkout la muestre
+  orders     Order[]                       // Pedidos que usaron esta cuenta
+
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 }
 
 model Coupon {
-  id            String   @id @default(cuid())
-  code          String   @unique
-  discountType  String   // e.g. "PERCENTAGE" | "FIXED"
-  discountValue Float
-  expiresAt     DateTime?
-  maxUses       Int?
-  usedCount     Int      @default(0)
-  active        Boolean  @default(true)
-  orders        Order[]
+  id            String    @id @default(cuid()) // ID interno del cupón
+  code          String    @unique              // Código que escribe el cliente (ej: "DESCUENTO10")
+  discountType  String                         // "PERCENTAGE" (ej: 10%) o "FIXED" (ej: $2000)
+  discountValue Float                          // Monto o porcentaje a descontar
+  expiresAt     DateTime?                      // Fecha de vencimiento (opcional)
+  maxUses       Int?                           // Cantidad máxima de usos permitidos (opcional)
+  usedCount     Int       @default(0)          // Veces que fue utilizado
+  active        Boolean   @default(true)       // Si el cupón está habilitado
+  orders        Order[]                        // Pedidos donde se utilizó
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 }
 
-model BankAccount {
-  id            String   @id @default(cuid())
-  alias         String
-  cbu           String
-  holderName    String
-  active        Boolean  @default(true)
-  rotationWeight Int      @default(1)
-  orders        Order[]
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-}
-
-model Order {
-  id            String       @id @default(cuid())
-  userId        String?
-  user          User?        @relation(fields: [userId], references: [id])
-  customerName  String
-  customerPhone String
-  items         Json         // snapshot of items ordered
-  total         Float
-  couponId      String?
-  coupon        Coupon?      @relation(fields: [couponId], references: [id])
-  bankAccountId String?
-  bankAccount   BankAccount? @relation(fields: [bankAccountId], references: [id])
-  status        String       @default("PENDING") // e.g. PENDING, PAID, SHIPPED, CANCELLED
-  whatsappSentAt DateTime?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-}
+// =========================================================================
+// 6. CONFIGURACIONES GENERALES DEL SITIO
+// =========================================================================
 
 model SiteConfig {
-  id        String   @id @default(cuid())
-  key       String   @unique
-  value     String   @db.Text
+  id        String   @id @default(cuid()) // ID de la configuración
+  key       String   @unique              // Clave (ej: "MIN_ORDER_AMOUNT", "WHATSAPP_NUMBER")
+  value     String   @db.Text             // Valor de la configuración
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
