@@ -69,3 +69,22 @@ export type HeroSlide = {
   badge?: string;
   imageUrl: string;
 };
+
+export type CartItem = {
+  product: Product;
+  quantity: number;
+  selectedUnit: string;
+  price: number;
+  totalPrice: number;
+};
+
+export type CheckoutFormData = {
+  customerName: string;
+  phone: string;
+  deliveryType: 'DELIVERY' | 'PICKUP';
+  address?: string;
+  cornerStreet?: string;
+  city?: string;
+  notes?: string;
+  paymentMethod: 'TRANSFERENCIA' | 'EFECTIVO';
+};

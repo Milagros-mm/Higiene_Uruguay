@@ -1,12 +1,16 @@
 'use client';
 
 import React from 'react';
-import { brands } from '@/lib/mock-data';
 import { SectionTitle } from '@/components/ui/SectionTitle';
+
+const BRANDS = [
+  { id: '1', name: 'Aromanza', logoUrl: '/brands/aromanza.svg' },
+  { id: '2', name: 'Sagrada Madre', logoUrl: '/brands/sagrada-madre.svg' },
+];
 
 export function BrandGrid() {
   // Duplicar las marcas para hacer el efecto de scroll infinito suave
-  const infiniteBrands = [...brands, ...brands, ...brands];
+  const infiniteBrands = [...BRANDS, ...BRANDS, ...BRANDS, ...BRANDS, ...BRANDS, ...BRANDS];
 
   return (
     <section id="marcas" className="scroll-mt-32 py-20 md:py-32 bg-slate-900 border-b border-slate-800 overflow-hidden">
@@ -17,7 +21,7 @@ export function BrandGrid() {
             Calidad Garantizada
           </span>
           <h2 className="text-2xl md:text-3xl font-display font-bold text-white mb-2">Marcas Oficiales</h2>
-          <p className="text-slate-400 text-sm md:text-base">Trabajamos exclusivamente con fabricantes líderes en higiene y limpieza profesional.</p>
+          <p className="text-slate-400 text-sm md:text-base">Trabajamos con marcas líderes en higiene y limpieza profesional.</p>
         </div>
 
         {/* Marquee Animation Container */}

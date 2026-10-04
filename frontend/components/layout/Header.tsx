@@ -1,11 +1,13 @@
 'use client';
 
-import React, { useState } from 'react';
+import React from 'react';
 import Link from 'next/link';
 import { ShoppingCart, User, Search } from 'lucide-react';
+import { STORE } from '@/lib/store';
+import { useCart } from '@/frontend/context/CartContext';
 
 export function Header() {
-  const [cartCount] = useState(2); // Example dynamic counter
+  const { totalItems, openCart, isLoaded } = useCart();
 
   return (
     <header className="sticky top-0 z-50 w-full bg-white/95 backdrop-blur-md border-b border-border shadow-xs">
@@ -17,7 +19,7 @@ export function Header() {
           <Link href="/" className="flex items-center shrink-0 group py-0.5">
             <img
               src="/logotipo.png"
-              alt="Higiene Uruguay"
+              alt={STORE.name}
               className="h-10 sm:h-12 md:h-14 lg:h-15 w-auto max-w-[160px] sm:max-w-[180px] md:max-w-[220px] object-contain transition-transform duration-200 group-hover:scale-105"
             />
           </Link>
@@ -32,18 +34,19 @@ export function Header() {
               <User className="h-5 w-5 text-brand-blue" />
             </Link>
 
-            <Link
-              href="/carrito"
-              className="relative p-2 rounded-xl text-brand-blue hover:bg-slate-100 transition-colors flex items-center justify-center"
+            <button
+              type="button"
+              onClick={openCart}
+              className="relative p-2 rounded-xl text-brand-blue hover:bg-slate-100 transition-colors flex items-center justify-center cursor-pointer"
               aria-label="Carrito de compra"
             >
               <ShoppingCart className="h-5 w-5" />
-              {cartCount > 0 && (
+              {isLoaded && totalItems > 0 && (
                 <span className="absolute -top-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-brand-cyan text-[10px] font-bold text-white shadow-sm ring-2 ring-white">
-                  {cartCount}
+                  {totalItems}
                 </span>
               )}
-            </Link>
+            </button>
           </div>
         </div>
 
@@ -77,18 +80,19 @@ export function Header() {
             </div>
           </Link>
 
-          <Link
-            href="/carrito"
-            className="relative p-2.5 rounded-xl text-brand-blue hover:bg-slate-100 transition-colors flex items-center justify-center"
+          <button
+            type="button"
+            onClick={openCart}
+            className="relative p-2.5 rounded-xl text-brand-blue hover:bg-slate-100 transition-colors flex items-center justify-center cursor-pointer"
             aria-label="Carrito de compra"
           >
             <ShoppingCart className="h-6 w-6" />
-            {cartCount > 0 && (
+            {isLoaded && totalItems > 0 && (
               <span className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-brand-cyan text-[11px] font-bold text-white shadow-sm ring-2 ring-white animate-pulse">
-                {cartCount}
+                {totalItems}
               </span>
             )}
-          </Link>
+          </button>
         </div>
 
       </div>

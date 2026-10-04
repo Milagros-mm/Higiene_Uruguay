@@ -1,32 +1,42 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { heroSlides } from '@/lib/mock-data';
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Image as ImageIcon } from 'lucide-react';
+
+const HERO_SLIDES = [
+  { id: '1', src: '/banners/hero-1.jpg', alt: 'Banner 1', title: 'Calidad Profesional en Higiene', subtitle: 'Todo para el mantenimiento y limpieza institucional', badge: 'Novedad' },
+  { id: '2', src: '/banners/hero-2.jpg', alt: 'Banner 2', title: 'Productos para Piscinas', subtitle: 'Mantené el agua cristalina todo el año', badge: 'Temporada' },
+  { id: '3', src: '/banners/hero-3.jpg', alt: 'Banner 3', title: 'Venta Mayorista', subtitle: 'Atención especializada para comercios y empresas', badge: 'Destacado' }
+];
 
 export function HeroBanner() {
   const [current, setCurrent] = useState(0);
+  const [imgErrors, setImgErrors] = useState<Record<string, boolean>>({});
+
+  const handleImgError = (id: string) => {
+    setImgErrors(prev => ({ ...prev, [id]: true }));
+  };
 
   useEffect(() => {
     const timer = setInterval(() => {
-      setCurrent((prev) => (prev + 1) % heroSlides.length);
+      setCurrent((prev) => (prev + 1) % HERO_SLIDES.length);
     }, 6000);
     return () => clearInterval(timer);
   }, []);
 
   const prevSlide = () => {
-    setCurrent((prev) => (prev === 0 ? heroSlides.length - 1 : prev - 1));
+    setCurrent((prev) => (prev === 0 ? HERO_SLIDES.length - 1 : prev - 1));
   };
 
   const nextSlide = () => {
-    setCurrent((prev) => (prev + 1) % heroSlides.length);
+    setCurrent((prev) => (prev + 1) % HERO_SLIDES.length);
   };
 
   return (
     <section className="relative w-full bg-slate-900 overflow-hidden">
       {/* Slider Container */}
       <div className="relative h-[380px] sm:h-[420px] md:h-[460px] lg:h-[500px] w-full">
-        {heroSlides.map((slide, index) => {
+        {HERO_SLIDES.map((slide, index) => {
           const isActive = index === current;
           if (!isActive) return null;
 
@@ -35,12 +45,20 @@ export function HeroBanner() {
               key={slide.id}
               className="absolute inset-0 z-10 animate-fadeIn"
             >
-              {/* Image with dark gradient overlay */}
-              <img
-                src={slide.imageUrl}
-                alt={slide.title}
-                className="w-full h-full object-cover"
-              />
+              {/* Image with dark gradient overlay or Fallback */}
+              {!imgErrors[slide.id] ? (
+                <img
+                  src={slide.src}
+                  alt={slide.alt}
+                  className="w-full h-full object-cover"
+                  onError={() => handleImgError(slide.id)}
+                />
+              ) : (
+                <div className="w-full h-full bg-gradient-to-br from-slate-200 to-cyan-100 flex items-center justify-center">
+                  <ImageIcon className="w-24 h-24 text-slate-400/50" />
+                </div>
+              )}
+              
               <div className="absolute inset-0 bg-gradient-to-r from-slate-950/40 via-slate-950/10 to-transparent" />
 
               {/* Content Box */}
@@ -54,7 +72,7 @@ export function HeroBanner() {
                   <h1 className="font-display font-bold text-3xl sm:text-4xl md:text-5xl text-white leading-tight tracking-tight drop-shadow-sm">
                     {slide.title}
                   </h1>
-                  <p className="text-sm sm:text-base md:text-lg text-slate-200 leading-relaxed max-w-xl font-normal">
+                  <p className="text-sm sm:text-base md:text-lg text-slate-200 leading-relaxed max-w-xl font-normal drop-shadow-sm">
                     {slide.subtitle}
                   </p>
                 </div>
@@ -82,7 +100,7 @@ export function HeroBanner() {
 
       {/* Slide Indicators / Dots */}
       <div className="absolute bottom-12 left-1/2 -translate-x-1/2 z-30 flex gap-2">
-        {heroSlides.map((_, idx) => (
+        {HERO_SLIDES.map((_, idx) => (
           <button
             key={idx}
             onClick={() => setCurrent(idx)}

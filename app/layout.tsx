@@ -20,6 +20,9 @@ export const metadata: Metadata = {
   description: "Productos de limpieza y desinfección profesional de máxima calidad",
 };
 
+import { CartProvider } from "@/frontend/context/CartContext";
+import { CartDrawer } from "@/frontend/components/cart/CartDrawer";
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -28,7 +31,10 @@ export default function RootLayout({
   return (
     <html lang="es" className={`${inter.variable} ${plusJakarta.variable} antialiased`}>
       <body className="min-h-screen bg-slate-50 text-slate-900 flex flex-col font-sans selection:bg-brand-cyan selection:text-white">
-        {children}
+        <CartProvider>
+          {children}
+          <CartDrawer />
+        </CartProvider>
       </body>
     </html>
   );
