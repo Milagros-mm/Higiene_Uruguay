@@ -21,24 +21,23 @@ export function FeaturedProducts() {
   };
 
   return (
-    <section id="destacados" className="py-14 md:py-20 bg-slate-50">
+    <section id="destacados" className="scroll-mt-32 py-28 md:py-36 bg-slate-50">
       <div className="container mx-auto px-4">
         
         {/* Header */}
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-8">
           <div>
-            <span className="text-xs md:text-sm font-bold uppercase tracking-widest text-brand-cyan mb-1 block">
+            <span className="text-xs md:text-sm font-semibold uppercase tracking-wider text-brand-cyan mb-1 block">
               Lo Más Elegido
             </span>
             <SectionTitle 
               title="Productos Destacados" 
-              subtitle="Los insumos y químicos más solicitados por nuestros clientes residenciales y corporativos."
             />
           </div>
 
           <Link
             href="/productos"
-            className="inline-flex items-center gap-1.5 text-sm font-bold text-brand-blue hover:text-brand-cyan transition-colors self-start md:self-auto"
+            className="inline-flex items-center gap-1.5 text-sm font-semibold text-slate-900 hover:text-brand-cyan transition-colors self-start md:self-auto"
           >
             <span>Ver catálogo completo</span>
             <ArrowRight className="w-4 h-4" />

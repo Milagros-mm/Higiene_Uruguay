@@ -16,7 +16,7 @@ export function SectionTitle({
 }: SectionTitleProps) {
   return (
     <div className={cn('space-y-2', centered && 'text-center mx-auto max-w-2xl', className)}>
-      <h2 className="text-2xl md:text-3xl lg:text-4xl font-display font-extrabold tracking-tight text-brand-blue">
+      <h2 className="text-2xl md:text-3xl lg:text-4xl font-display font-semibold tracking-tight text-brand-blue">
         {title}
       </h2>
       {subtitle && (

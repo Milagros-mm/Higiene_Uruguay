@@ -9,7 +9,7 @@ export function BrandGrid() {
   const infiniteBrands = [...brands, ...brands, ...brands];
 
   return (
-    <section id="marcas" className="py-10 md:py-14 bg-slate-900 border-b border-slate-800 overflow-hidden">
+    <section id="marcas" className="scroll-mt-32 py-20 md:py-32 bg-slate-900 border-b border-slate-800 overflow-hidden">
       <div className="container mx-auto px-4">
         
         <div className="text-center max-w-xl mx-auto mb-8">
@@ -27,7 +27,7 @@ export function BrandGrid() {
           <div className="absolute right-0 top-0 bottom-0 w-16 md:w-32 bg-gradient-to-l from-slate-900 to-transparent z-10 pointer-events-none" />
 
           {/* Animated scrolling track */}
-          <div className="flex items-center gap-6 md:gap-10 animate-scroll py-2 pl-6 md:pl-10">
+          <div className="flex items-center gap-6 md:gap-10 animate-scroll pause-hover py-2 pl-6 md:pl-10">
             {infiniteBrands.map((brand, idx) => (
               <div
                 key={`${brand.id}-${idx}`}

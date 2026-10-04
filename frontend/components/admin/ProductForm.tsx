@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Product } from '@/frontend/types';
+import { Product } from '@/types';
 import { categories } from '@/frontend/mock/mock-data';
 import { 
   Save, 

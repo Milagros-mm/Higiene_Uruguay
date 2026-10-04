@@ -20,12 +20,12 @@ export function CategoryGrid() {
   };
 
   return (
-    <section id="categorias" className="py-14 md:py-18 bg-white border-b border-border">
+    <section id="categorias" className="scroll-mt-32 py-28 md:py-36 bg-white border-b border-border">
       <div className="container mx-auto px-4">
         
         {/* Title */}
         <div className="text-center max-w-xl mx-auto mb-8">
-          <span className="text-xs md:text-sm font-bold uppercase tracking-widest text-brand-cyan mb-1 block">
+          <span className="text-xs md:text-sm font-semibold uppercase tracking-wider text-brand-cyan mb-1 block">
             Explorá por Rubro
           </span>
           <SectionTitle

@@ -1,18 +1,22 @@
 @import "tailwindcss";
 
 @theme {
-  --color-brand-blue: #004b87;
-  --color-brand-blue-light: #1a64a3;
-  --color-brand-blue-dark: #003366;
+  --color-brand-blue: #0f172a;
+  --color-brand-blue-light: #1e293b;
+  --color-brand-blue-dark: #020617;
   
-  --color-brand-cyan: #00a2e8;
-  --color-brand-cyan-light: #33b5ec;
-  --color-brand-cyan-dark: #0081ba;
+  --color-brand-cyan: #06b6d4;
+  --color-brand-cyan-light: #22d3ee;
+  --color-brand-cyan-dark: #0891b2;
+
+  --color-brand-slate: #334155;
+  --color-brand-dark: #020617;
 
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   
-  --font-sans: var(--font-inter);
+  --font-sans: var(--font-inter), system-ui, -apple-system, sans-serif;
+  --font-display: var(--font-display), "Plus Jakarta Sans", sans-serif;
 
   --animate-scroll: scroll 25s linear infinite;
   @keyframes scroll {
@@ -25,9 +29,9 @@
   :root {
     --background: #f8fafc; /* slate-50 */
     --foreground: #0f172a; /* slate-900 */
-    --primary: #004b87;
+    --primary: #0f172a; /* Azul Noche / Grafito */
     --primary-foreground: #ffffff;
-    --secondary: #00a2e8;
+    --secondary: #06b6d4; /* Cian Eléctrico */
     --secondary-foreground: #ffffff;
     --muted: #f1f5f9;
     --muted-foreground: #64748b;
@@ -37,6 +41,9 @@
 }
 
 @layer base {
+  html {
+    scroll-behavior: smooth;
+  }
   * {
     border-color: var(--border);
   }
@@ -70,4 +77,17 @@
     -webkit-text-fill-color: transparent;
     background-image: linear-gradient(to right, var(--color-brand-blue), var(--color-brand-cyan));
   }
+
+  .pause-hover:hover {
+    animation-play-state: paused;
+  }
+
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
 }
+

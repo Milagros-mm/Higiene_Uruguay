@@ -1,4 +1,4 @@
-import { Category, Product, Benefit, StoreInfo } from '../types';
+import { Category, Product, Benefit, StoreInfo } from '@/types';
 
 export const categories: Category[] = [
   { id: '1', slug: 'limpieza-hogar', name: 'Limpieza Hogar', icon: 'Home', itemCount: 45, featured: true },
@@ -16,6 +16,7 @@ export const featuredProducts: Product[] = [
     name: 'Cloro Líquido 10L',
     description: 'Cloro líquido de alta concentración, ideal para desinfección profunda de superficies y piscinas.',
     price: 350,
+    originalPrice: 420,
     categoryId: '3',
     images: ['/images/media_1790969893970.png'],
     inStock: true,
