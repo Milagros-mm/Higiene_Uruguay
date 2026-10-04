@@ -23,6 +23,8 @@
       "@backend/*": ["./backend/*"],
       "@middleware/*": ["./middleware/*"],
       "@/components/*": ["./frontend/components/*"],
+      "@/types": ["./frontend/types/index.ts"],
+      "@/types/*": ["./frontend/types/*"],
       "@/lib/*": ["./frontend/mock/*", "./frontend/utils/*"],
       "@/*": ["./*"]
     }
