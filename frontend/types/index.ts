@@ -81,10 +81,15 @@ export type CartItem = {
 export type CheckoutFormData = {
   customerName: string;
   phone: string;
-  deliveryType: 'DELIVERY' | 'PICKUP';
+  deliveryType: 'PICKUP' | 'BUYER_SHIPPING' | 'DELIVERY';
+  pickupTimeSlot?: string;
   address?: string;
   cornerStreet?: string;
   city?: string;
   notes?: string;
   paymentMethod: 'TRANSFERENCIA' | 'EFECTIVO';
+  couponCode?: string;
+  couponDiscount?: number;
+  spendDiscount?: number;
+  finalTotal?: number;
 };

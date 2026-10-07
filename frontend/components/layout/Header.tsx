@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { ShoppingCart, User, Search } from 'lucide-react';
 import { STORE } from '@/lib/store';
 import { useCart } from '@/frontend/context/CartContext';
+import { CartMiniPopup } from '@/frontend/components/cart/CartMiniPopup';
 
 export function Header() {
   const { totalItems, openCart, isLoaded } = useCart();
@@ -34,19 +35,22 @@ export function Header() {
               <User className="h-5 w-5 text-brand-blue" />
             </Link>
 
-            <button
-              type="button"
-              onClick={openCart}
-              className="relative p-2 rounded-xl text-brand-blue hover:bg-slate-100 transition-colors flex items-center justify-center cursor-pointer"
-              aria-label="Carrito de compra"
-            >
-              <ShoppingCart className="h-5 w-5" />
-              {isLoaded && totalItems > 0 && (
-                <span className="absolute -top-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-brand-cyan text-[10px] font-bold text-white shadow-sm ring-2 ring-white">
-                  {totalItems}
-                </span>
-              )}
-            </button>
+            <div className="relative">
+              <button
+                type="button"
+                onClick={openCart}
+                className="relative p-2 rounded-xl text-brand-blue hover:bg-slate-100 transition-colors flex items-center justify-center cursor-pointer"
+                aria-label="Carrito de compra"
+              >
+                <ShoppingCart className="h-5 w-5" />
+                {isLoaded && totalItems > 0 && (
+                  <span className="absolute -top-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-full bg-brand-cyan text-[10px] font-bold text-white shadow-sm ring-2 ring-white">
+                    {totalItems}
+                  </span>
+                )}
+              </button>
+              <CartMiniPopup />
+            </div>
           </div>
         </div>
 
@@ -72,7 +76,10 @@ export function Header() {
 
         {/* Account & Cart - Desktop View */}
         <div className="hidden md:flex items-center gap-2 md:gap-3 shrink-0">
-          <Link href="/cuenta" className="flex items-center gap-2 px-3 py-2 rounded-xl text-brand-slate hover:text-brand-blue hover:bg-slate-100 transition-colors">
+          <Link
+            href="/cuenta"
+            className="flex items-center gap-2 px-3 py-2 rounded-xl text-brand-slate hover:text-brand-blue hover:bg-slate-100 transition-colors"
+          >
             <User className="h-5 w-5 text-brand-blue" />
             <div className="text-left leading-tight hidden lg:block">
               <span className="text-[11px] text-muted-foreground block">Bienvenido</span>
@@ -80,19 +87,22 @@ export function Header() {
             </div>
           </Link>
 
-          <button
-            type="button"
-            onClick={openCart}
-            className="relative p-2.5 rounded-xl text-brand-blue hover:bg-slate-100 transition-colors flex items-center justify-center cursor-pointer"
-            aria-label="Carrito de compra"
-          >
-            <ShoppingCart className="h-6 w-6" />
-            {isLoaded && totalItems > 0 && (
-              <span className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-brand-cyan text-[11px] font-bold text-white shadow-sm ring-2 ring-white animate-pulse">
-                {totalItems}
-              </span>
-            )}
-          </button>
+          <div className="relative">
+            <button
+              type="button"
+              onClick={openCart}
+              className="relative p-2.5 rounded-xl text-brand-blue hover:bg-slate-100 transition-colors flex items-center justify-center cursor-pointer"
+              aria-label="Carrito de compra"
+            >
+              <ShoppingCart className="h-6 w-6" />
+              {isLoaded && totalItems > 0 && (
+                <span className="absolute -top-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full bg-brand-cyan text-[11px] font-bold text-white shadow-sm ring-2 ring-white animate-pulse">
+                  {totalItems}
+                </span>
+              )}
+            </button>
+            <CartMiniPopup />
+          </div>
         </div>
 
       </div>

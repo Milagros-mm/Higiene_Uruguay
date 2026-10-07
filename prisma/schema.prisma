@@ -16,7 +16,6 @@ model User {
   name          String?                        // Nombre y apellido
   email         String?   @unique              // Correo electrónico (único para login)
   emailVerified DateTime?                      // Fecha de verificación de email
-  image         String?                        // Foto de perfil
   password      String?                        // Contraseña cifrada (para login con usuario/clave)
   role          String    @default("CUSTOMER") // Rol: "ADMIN" (dueños) o "CUSTOMER" (clientes)
   

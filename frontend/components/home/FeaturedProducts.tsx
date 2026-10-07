@@ -1,89 +1,59 @@
 'use client';
 
-import React, { useRef } from 'react';
+import React from 'react';
 import { featuredProducts } from '@/lib/mock-data';
 import { ProductCard } from '@/components/product/ProductCard';
 import { SectionTitle } from '@/components/ui/SectionTitle';
 import Link from 'next/link';
-import { ArrowRight, ChevronLeft, ChevronRight } from 'lucide-react';
+import { ArrowRight } from 'lucide-react';
 
 export function FeaturedProducts() {
-  const scrollRef = useRef<HTMLDivElement>(null);
-
-  const scroll = (direction: 'left' | 'right') => {
-    if (scrollRef.current) {
-      const scrollAmount = 280;
-      scrollRef.current.scrollBy({
-        left: direction === 'left' ? -scrollAmount : scrollAmount,
-        behavior: 'smooth',
-      });
-    }
-  };
-
   return (
-    <section id="destacados" className="scroll-mt-32 py-28 md:py-36 bg-slate-50">
+    <section id="destacados" className="scroll-mt-32 py-16 md:py-24 bg-slate-50 border-b border-border">
       <div className="container mx-auto px-4">
         
-        {/* Header */}
-        <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-8">
+        {/* Cabecera de la Sección */}
+        <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-10 max-w-7xl mx-auto">
           <div>
             <span className="text-xs md:text-sm font-semibold uppercase tracking-wider text-brand-cyan mb-1 block">
               Lo Más Elegido
             </span>
             <SectionTitle 
               title="Productos Destacados" 
+              subtitle="Nuestra selección de artículos esenciales con stock garantizado y la mejor calidad."
             />
           </div>
 
           <Link
-            href="/productos"
-            className="inline-flex items-center gap-1.5 text-sm font-semibold text-slate-900 hover:text-brand-cyan transition-colors self-start md:self-auto"
+            href="/destacados"
+            className="inline-flex items-center gap-1.5 text-sm font-semibold text-slate-800 hover:text-brand-cyan transition-colors self-start md:self-auto group"
           >
             <span>Ver catálogo completo</span>
-            <ArrowRight className="w-4 h-4" />
+            <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
           </Link>
         </div>
 
-        {/* Carousel Container with High-Visibility Floating Cyan Buttons */}
-        <div className="relative group/featured max-w-7xl mx-auto px-2">
-          
-          {/* Prominent Floating Cyan Button (Left) */}
-          <button
-            onClick={() => scroll('left')}
-            aria-label="Anterior producto"
-            className="absolute -left-3 md:-left-5 top-1/2 -translate-y-1/2 z-20 w-11 h-11 rounded-full bg-brand-cyan hover:bg-brand-cyan-dark text-white flex items-center justify-center shadow-lg hover:shadow-xl hover:scale-110 active:scale-95 transition-all duration-200 ring-4 ring-white"
-          >
-            <ChevronLeft className="w-6 h-6 stroke-[2.5]" />
-          </button>
+        {/* Matriz (Grid) Responsiva de Productos */}
+        <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4 md:gap-6 max-w-7xl mx-auto">
+          {featuredProducts.map((product) => (
+            <div key={product.id} className="h-full">
+              <ProductCard product={product} />
+            </div>
+          ))}
+        </div>
 
-          {/* Horizontal Scrolling Products Row (Compact Density) */}
-          <div
-            ref={scrollRef}
-            className="flex items-stretch gap-4 md:gap-5 overflow-x-auto py-3 px-2 snap-x snap-mandatory no-scrollbar"
+        {/* Botón Central Inferior "Ver más" */}
+        <div className="mt-12 sm:mt-14 text-center">
+          <Link
+            href="/destacados"
+            className="inline-flex items-center justify-center gap-2 px-8 py-3.5 rounded-xl bg-white hover:bg-slate-100 text-slate-900 hover:text-brand-cyan border border-slate-300 hover:border-brand-cyan/60 font-bold text-sm shadow-xs hover:shadow-md transition-all duration-200 group active:scale-95"
           >
-            {featuredProducts.map((product) => (
-              <div
-                key={product.id}
-                className="w-[190px] sm:w-[210px] md:w-[230px] lg:w-[240px] snap-start shrink-0"
-              >
-                <ProductCard product={product} />
-              </div>
-            ))}
-          </div>
-
-          {/* Prominent Floating Cyan Button (Right) */}
-          <button
-            onClick={() => scroll('right')}
-            aria-label="Siguiente producto"
-            className="absolute -right-3 md:-right-5 top-1/2 -translate-y-1/2 z-20 w-11 h-11 rounded-full bg-brand-cyan hover:bg-brand-cyan-dark text-white flex items-center justify-center shadow-lg hover:shadow-xl hover:scale-110 active:scale-95 transition-all duration-200 ring-4 ring-white"
-          >
-            <ChevronRight className="w-6 h-6 stroke-[2.5]" />
-          </button>
-
+            <span>Ver más productos destacados</span>
+            <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform text-brand-cyan" />
+          </Link>
         </div>
 
       </div>
     </section>
   );
 }
-

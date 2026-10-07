@@ -22,6 +22,58 @@ export const money = (n: number) =>
 
 import type { CartItem, CheckoutFormData } from "@/types";
 
+export interface StorePromotionConfig {
+  thresholdAmount: number; // Monto para acceder al beneficio (ej: 25000)
+  discountPercent: number; // Porcentaje de descuento (ej: 10)
+  benefitTitle: string; // Título promocional
+  isActive: boolean; // Si está activa la promo
+  bannerText: string; // Texto mostrado en barra/carrito
+}
+
+export const DEFAULT_PROMOTION_CONFIG: StorePromotionConfig = {
+  thresholdAmount: 25000,
+  discountPercent: 10,
+  benefitTitle: "10% OFF en el total de tu compra",
+  isActive: true,
+  bannerText: "¡Superando los $25.000 obtenés un 10% de DESCUENTO automático!",
+};
+
+export const PROMO_STORAGE_KEY = 'higiene_uruguay_promo_config';
+
+export function getStoredPromotionConfig(): StorePromotionConfig {
+  if (typeof window === 'undefined') return DEFAULT_PROMOTION_CONFIG;
+  try {
+    const raw = localStorage.getItem(PROMO_STORAGE_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch (e) {
+    console.error('Error leyendo config promocional', e);
+  }
+  return DEFAULT_PROMOTION_CONFIG;
+}
+
+export function saveStoredPromotionConfig(config: StorePromotionConfig): void {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(PROMO_STORAGE_KEY, JSON.stringify(config));
+    window.dispatchEvent(new Event('promo-config-updated'));
+  } catch (e) {
+    console.error('Error guardando config promocional', e);
+  }
+}
+
+export interface CouponItem {
+  code: string;
+  type: 'PERCENT' | 'FIXED';
+  value: number;
+  description: string;
+}
+
+export const VALID_COUPONS: Record<string, CouponItem> = {
+  HIGIENE10: { code: 'HIGIENE10', type: 'PERCENT', value: 10, description: '10% OFF adicional' },
+  PROMO15: { code: 'PROMO15', type: 'PERCENT', value: 15, description: '15% OFF especial' },
+  BIENVENIDA: { code: 'BIENVENIDA', type: 'FIXED', value: 2000, description: '$2.000 de descuento' },
+};
+
 export function buildWhatsAppOrderMessage(
   data: CheckoutFormData,
   items: CartItem[],
@@ -32,14 +84,21 @@ export function buildWhatsAppOrderMessage(
     `----------------------------------------`,
     `👤 *Cliente:* ${data.customerName.trim()}`,
     `📱 *Teléfono:* ${data.phone.trim()}`,
-    `🚚 *Modalidad:* ${data.deliveryType === 'DELIVERY' ? 'Envío a domicilio' : 'Retiro en el local'}`,
   ];
 
-  if (data.deliveryType === 'DELIVERY') {
-    lines.push(`📍 *Dirección:* ${data.address?.trim() || 'A coordinar'}${data.cornerStreet ? ` (entre ${data.cornerStreet.trim()})` : ''}`);
-    if (data.city) lines.push(`🏙️ *Localidad:* ${data.city.trim()}`);
+  if (data.deliveryType === 'PICKUP') {
+    lines.push(`🏪 *Modalidad:* Retiro en el local (14 de Julio 14)`);
+    if (data.pickupTimeSlot) {
+      lines.push(`⏰ *Horario estimado de retiro:* ${data.pickupTimeSlot}`);
+    }
+  } else if (data.deliveryType === 'BUYER_SHIPPING') {
+    lines.push(`🛵 *Modalidad:* Envío a coordinar (a cargo del comprador / cadetería)`);
+    if (data.address?.trim()) {
+      lines.push(`📍 *Dirección de entrega:* ${data.address.trim()}${data.cornerStreet ? ` (${data.cornerStreet.trim()})` : ''}`);
+    }
   } else {
-    lines.push(`🏪 *Punto de Retiro:* 14 de Julio 14, Concepción del Uruguay`);
+    lines.push(`🚚 *Modalidad:* Envío a domicilio`);
+    lines.push(`📍 *Dirección:* ${data.address?.trim() || 'A coordinar'}${data.cornerStreet ? ` (${data.cornerStreet.trim()})` : ''}`);
   }
 
   lines.push(`💳 *Forma de Pago:* ${data.paymentMethod === 'TRANSFERENCIA' ? 'Transferencia Bancaria' : 'Efectivo'}`);
@@ -53,11 +112,22 @@ export function buildWhatsAppOrderMessage(
   });
 
   lines.push(`----------------------------------------`);
-  lines.push(`💰 *TOTAL ESTIMADO: ${money(subtotal)}*`);
+  lines.push(`Subtotal: ${money(subtotal)}`);
+
+  if (data.spendDiscount && data.spendDiscount > 0) {
+    lines.push(`🎁 *Descuento por Monto:* -${money(data.spendDiscount)}`);
+  }
+
+  if (data.couponDiscount && data.couponDiscount > 0) {
+    lines.push(`🏷️ *Cupón (${data.couponCode}):* -${money(data.couponDiscount)}`);
+  }
+
+  const final = data.finalTotal !== undefined ? data.finalTotal : subtotal;
+  lines.push(`💰 *TOTAL ESTIMADO: ${money(final)}*`);
 
   const hasInquiry = items.some((item) => item.product.requiresStockInquiry || item.product.isBulk);
   if (hasInquiry) {
-    lines.push(`⚠️ *Aviso:* Contiene artículos sueltos sujetos a confirmación de stock en local.`);
+    lines.push(`⚠️ *Aviso:* Contiene artículos sueltos sujetos a confirmación de stock físico en local.`);
   }
 
   if (data.notes && data.notes.trim()) {
@@ -65,7 +135,7 @@ export function buildWhatsAppOrderMessage(
   }
 
   lines.push(`----------------------------------------`);
-  lines.push(`¡Hola! Quisiera confirmar este pedido realizado en la tienda online.`);
+  lines.push(`¡Hola! Quiero confirmar este pedido realizado en la tienda online.`);
 
   return lines.join('\n');
 }
