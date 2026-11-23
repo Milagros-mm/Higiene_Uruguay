@@ -1,679 +1,582 @@
-'use client';
+"use client";
 
-import React, { useState } from 'react';
-import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { Product } from '@/types';
-import { categories } from '@/frontend/mock/mock-data';
-import { 
-  Save, 
-  ArrowLeft, 
-  Package, 
-  Droplet, 
-  Tag, 
-  FileText, 
-  Image as ImageIcon, 
-  Sparkles, 
-  AlertCircle,
-  Plus,
-  Trash2,
-  CheckCircle2,
-  Info
-} from 'lucide-react';
-import { Button } from '@/frontend/components/ui/Button';
+import React, { useState } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { ArrowLeft, Upload, X, Lock } from "lucide-react";
+import {
+  useAdminCatalog,
+  AdminProduct,
+  AdminToggle,
+  ConfirmDeleteModal,
+} from "@/frontend/context/AdminCatalogContext";
+import { money } from "@/frontend/utils/store";
 
 interface ProductFormProps {
-  initialProduct?: Product;
+  initialProduct?: AdminProduct;
   isNew?: boolean;
 }
 
 export function ProductForm({ initialProduct, isNew = false }: ProductFormProps) {
   const router = useRouter();
+  const { rubros, subrubros, marcas, saveProducto, deleteProducto } = useAdminCatalog();
 
-  // Estado de las pestañas
-  const [activeTab, setActiveTab] = useState<'general' | 'tipo' | 'precios' | 'ficha' | 'fotos'>('general');
-  const [savedSuccess, setSavedSuccess] = useState(false);
+  const sincronizado = initialProduct ? initialProduct.sincronizado : false;
 
-  // Estados del formulario
-  const [name, setName] = useState(initialProduct?.name || '');
-  const [sku, setSku] = useState(initialProduct?.sku || '');
-  const [barcode, setBarcode] = useState(initialProduct?.barcode || '');
-  const [brand, setBrand] = useState(initialProduct?.brand || 'Higiene Uruguay');
-  const [categoryId, setCategoryId] = useState(initialProduct?.categoryId || '1');
-  const [description, setDescription] = useState(initialProduct?.description || '');
+  // 1. Datos básicos
+  const [sku, setSku] = useState(initialProduct?.sku || "");
+  const [barcode, setBarcode] = useState(initialProduct?.barcode || "");
+  const [nombre, setNombre] = useState(initialProduct?.nombre || "");
+  const [presentacion, setPresentacion] = useState(initialProduct?.presentacion || "");
+  const [descripcion, setDescripcion] = useState(initialProduct?.descripcion || "");
+  const [modoDeUso, setModoDeUso] = useState(initialProduct?.modoDeUso || "");
+  const [superficiesAptas, setSuperficiesAptas] = useState(initialProduct?.superficiesAptas || "");
+  const [advertencias, setAdvertencias] = useState(initialProduct?.advertencias || "");
 
-  // Tipo & Sueltos
-  const [isBulk, setIsBulk] = useState(initialProduct?.isBulk ?? false);
-  const [bulkUnit, setBulkUnit] = useState(initialProduct?.bulkUnit || 'Litros');
-  const [bulkPresentation, setBulkPresentation] = useState(initialProduct?.bulkPresentation || 'Bidón 5 Litros');
-  const [includesContainer, setIncludesContainer] = useState(initialProduct?.includesContainer ?? true);
-  const [requiresStockInquiry, setRequiresStockInquiry] = useState(initialProduct?.requiresStockInquiry ?? false);
-  const [stock, setStock] = useState(initialProduct?.stock ?? 10);
+  // 2. Fotos
+  const [imagenes, setImagenes] = useState<string[]>(initialProduct?.imagenes || []);
+  const [nuevaImagenUrl, setNuevaImagenUrl] = useState("");
 
-  // Precios & Ofertas
-  const [price, setPrice] = useState<number>(initialProduct?.price || 0);
-  const [compareAtPrice, setCompareAtPrice] = useState<number>(initialProduct?.compareAtPrice || 0);
-  const [isOnSale, setIsOnSale] = useState(initialProduct?.isOnSale || false);
-  const [badges, setBadges] = useState<string[]>(initialProduct?.badges || []);
-  const [volumeDiscounts, setVolumeDiscounts] = useState(initialProduct?.volumeDiscounts || []);
+  // 3. Precio y stock
+  const [precioSistema, setPrecioSistema] = useState<number>(initialProduct?.precioSistema || 0);
+  const [precioOferta, setPrecioOferta] = useState<string>(
+    initialProduct?.precioOferta ? String(initialProduct.precioOferta) : "",
+  );
+  const [stock, setStock] = useState<number>(initialProduct?.stock ?? 0);
+  const [esSuelto, setEsSuelto] = useState<boolean>(initialProduct?.esSuelto ?? false);
+  const [controlarStock, setControlarStock] = useState<boolean>(
+    initialProduct?.controlarStock ?? true,
+  );
 
-  // Ficha técnica
-  const [fragrance, setFragrance] = useState(initialProduct?.fragrance || '');
-  const [dilutionInstructions, setDilutionInstructions] = useState(initialProduct?.dilutionInstructions || '');
-  const [suitableSurfaces, setSuitableSurfaces] = useState(initialProduct?.suitableSurfaces || '');
-  const [yieldInfo, setYieldInfo] = useState(initialProduct?.yieldInfo || '');
-  const [precautions, setPrecautions] = useState(initialProduct?.precautions || '');
+  // 4. Rubro y marca
+  const [rubroId, setRubroId] = useState(initialProduct?.rubroId || "");
+  const [subrubroId, setSubrubroId] = useState(initialProduct?.subrubroId || "");
+  const [marcaId, setMarcaId] = useState(initialProduct?.marcaId || "");
 
-  // Fotos
-  const [images, setImages] = useState<string[]>(initialProduct?.images || ['/images/products/difusorAromanza.jpg']);
+  // 5. Visibilidad
+  const [activo, setActivo] = useState<boolean>(initialProduct?.activo ?? true);
 
-  // Cálculo del porcentaje de descuento
-  const discountPercentage = compareAtPrice > price && compareAtPrice > 0
-    ? Math.round(((compareAtPrice - price) / compareAtPrice) * 100)
-    : 0;
+  const [isSaving, setIsSaving] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
-  // Toggle de badges
-  const availableBadges = ['Más Vendido', 'Oferta', 'Nuevo', 'Suelto', 'Económico', 'Industrial', 'Rinde 50L'];
-  const toggleBadge = (b: string) => {
-    if (badges.includes(b)) {
-      setBadges(badges.filter(item => item !== b));
-    } else {
-      setBadges([...badges, b]);
+  const subrubrosDisponibles = subrubros.filter((s) => s.rubroId === rubroId);
+
+  const handleImageFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === "string") {
+        setImagenes((prev) => [...prev, reader.result as string]);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleAddImageUrl = () => {
+    if (!nuevaImagenUrl.trim()) return;
+    setImagenes((prev) => [...prev, nuevaImagenUrl.trim()]);
+    setNuevaImagenUrl("");
+  };
+
+  const handleRemoveImage = (index: number) => {
+    setImagenes((prev) => prev.filter((_, idx) => idx !== index));
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!nombre.trim()) return;
+
+    setIsSaving(true);
+    try {
+      await saveProducto({
+        id: initialProduct?.id,
+        sku: sku.trim() || "SIN-CODIGO",
+        barcode: barcode.trim(),
+        nombreOriginalSistema: initialProduct?.nombreOriginalSistema || nombre.toUpperCase(),
+        nombre: nombre.trim(),
+        descripcion: descripcion.trim(),
+        modoDeUso: modoDeUso.trim(),
+        advertencias: advertencias.trim(),
+        superficiesAptas: superficiesAptas.trim(),
+        presentacion: presentacion.trim(),
+        precioSistema: Number(precioSistema) || 0,
+        precioOferta: precioOferta ? Number(precioOferta) : undefined,
+        stock: Number(stock) || 0,
+        esSuelto,
+        controlarStock: esSuelto ? false : controlarStock,
+        rubroId,
+        subrubroId: subrubroId || undefined,
+        marcaId: marcaId || undefined,
+        imagenes,
+        activo,
+        sincronizado,
+      });
+      router.push("/admin/productos");
+    } finally {
+      setIsSaving(false);
     }
   };
 
-  // Agregar descuento por volumen
-  const addVolumeDiscount = () => {
-    setVolumeDiscounts([...volumeDiscounts, { minQty: 3, unitPrice: Math.round(price * 0.9) }]);
-  };
-
-  const removeVolumeDiscount = (index: number) => {
-    setVolumeDiscounts(volumeDiscounts.filter((_, idx) => idx !== index));
-  };
-
-  const handleSave = (e: React.FormEvent) => {
-    e.preventDefault();
-    setSavedSuccess(true);
-    setTimeout(() => {
-      setSavedSuccess(false);
-      router.push('/admin/productos');
-    }, 1500);
+  const handleConfirmDelete = async () => {
+    if (!initialProduct) return;
+    setIsDeleting(true);
+    try {
+      await deleteProducto(initialProduct.id);
+      setShowDeleteConfirm(false);
+      router.push("/admin/productos");
+    } finally {
+      setIsDeleting(false);
+    }
   };
 
   return (
-    <form onSubmit={handleSave} className="max-w-6xl mx-auto space-y-6">
-
-      {/* Barra de Acciones Superior */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-white p-4 rounded-2xl border border-slate-200 shadow-2xs">
-        <div className="flex items-center gap-3">
-          <Link href="/admin/productos">
-            <Button type="button" variant="outline" size="sm" className="h-9 gap-1.5 rounded-xl text-xs font-bold">
+    <div className="min-h-full pb-28">
+      {/* Encabezado simple */}
+      <div className="bg-white border-b border-slate-200 px-6 sm:px-8 py-5 mb-6">
+        <div className="max-w-4xl mx-auto flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <Link
+              href="/admin/productos"
+              className="p-2 rounded-md border border-slate-200 text-slate-600 hover:text-slate-900 hover:bg-slate-50 transition-colors"
+              aria-label="Volver a productos"
+            >
               <ArrowLeft className="w-4 h-4" />
-              <span>Volver</span>
-            </Button>
-          </Link>
-          <div>
-            <h2 className="font-display font-bold text-base sm:text-lg text-slate-900 leading-tight">
-              {isNew ? 'Nuevo Producto' : `Editar: ${name || 'Sin título'}`}
-            </h2>
-            <div className="flex items-center gap-2 text-xs text-slate-500">
-              <span>SKU: <strong>{sku || 'Sin asignar'}</strong></span>
-              <span>•</span>
-              <span className={isBulk ? 'text-brand-cyan font-bold' : 'text-slate-600'}>
-                {isBulk ? `Suelto (${bulkPresentation})` : 'Envasado'}
-              </span>
-            </div>
+            </Link>
+            <h1 className="text-2xl font-semibold text-[#0f172a] tracking-tight">
+              {isNew ? "Nuevo producto" : nombre || "Editar producto"}
+            </h1>
           </div>
-        </div>
-
-        <div className="flex items-center gap-3 w-full sm:w-auto">
-          {savedSuccess && (
-            <div className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 text-emerald-700 rounded-xl text-xs font-bold border border-emerald-200">
-              <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-              <span>¡Guardado correctamente!</span>
-            </div>
-          )}
-          <Button type="submit" className="gap-2 bg-brand-cyan hover:bg-brand-cyan-dark text-white font-bold rounded-xl h-10 px-6 shadow-sm w-full sm:w-auto">
-            <Save className="w-4 h-4" />
-            <span>Guardar Producto</span>
-          </Button>
         </div>
       </div>
 
-      {/* Navegación por Pestañas */}
-      <div className="flex items-center gap-2 p-1.5 bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-x-auto">
-        <button
-          type="button"
-          onClick={() => setActiveTab('general')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all whitespace-nowrap ${
-            activeTab === 'general' ? 'bg-slate-900 text-white shadow-xs' : 'text-slate-600 hover:bg-slate-100'
-          }`}
-        >
-          <Package className="w-4 h-4" />
-          <span>1. Datos Generales</span>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => setActiveTab('tipo')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all whitespace-nowrap ${
-            activeTab === 'tipo' ? 'bg-cyan-500 text-white shadow-xs' : 'text-cyan-800 hover:bg-cyan-50'
-          }`}
-        >
-          <Droplet className="w-4 h-4" />
-          <span>2. Tipo & Presentación ({isBulk ? 'Suelto' : 'Envasado'})</span>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => setActiveTab('precios')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all whitespace-nowrap ${
-            activeTab === 'precios' ? 'bg-amber-500 text-white shadow-xs' : 'text-amber-800 hover:bg-amber-50'
-          }`}
-        >
-          <Tag className="w-4 h-4" />
-          <span>3. Precios & Ofertas</span>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => setActiveTab('ficha')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all whitespace-nowrap ${
-            activeTab === 'ficha' ? 'bg-slate-900 text-white shadow-xs' : 'text-slate-600 hover:bg-slate-100'
-          }`}
-        >
-          <FileText className="w-4 h-4" />
-          <span>4. Ficha Técnica</span>
-        </button>
-
-        <button
-          type="button"
-          onClick={() => setActiveTab('fotos')}
-          className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all whitespace-nowrap ${
-            activeTab === 'fotos' ? 'bg-slate-900 text-white shadow-xs' : 'text-slate-600 hover:bg-slate-100'
-          }`}
-        >
-          <ImageIcon className="w-4 h-4" />
-          <span>5. Fotos ({images.length})</span>
-        </button>
-      </div>
-
-      {/* ============================================================== */}
-      {/* PESTAÑA 1: DATOS GENERALES                                    */}
-      {/* ============================================================== */}
-      {activeTab === 'general' && (
-        <div className="bg-white p-6 sm:p-8 rounded-2xl border border-slate-200 shadow-2xs space-y-6">
-          <div className="border-b border-slate-100 pb-4">
-            <h3 className="font-display font-bold text-base text-slate-900">Identificación Comercial</h3>
-            <p className="text-xs text-slate-500">Nombre público, categoría y códigos de integración con ApolloGesCom.</p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="md:col-span-2 space-y-1.5">
-              <label className="text-xs font-bold text-slate-700">Nombre Comercial en la Web *</label>
-              <input
-                type="text"
-                required
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="Ej: Jabón Líquido Baja Espuma Blanco Dúo 2L"
-                className="w-full h-11 px-4 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-brand-cyan/20 focus:border-brand-cyan transition-all"
-              />
-              <p className="text-[11px] text-slate-400">Es el nombre que leerá el cliente en las tarjetas y buscador.</p>
+      <form onSubmit={handleSubmit} className="px-6 sm:px-8 max-w-4xl mx-auto space-y-6">
+        {/* Aviso claro sobre campos sincronizados vs editables */}
+        {sincronizado && (
+          <div className="bg-slate-100 border border-slate-200 rounded-lg p-4 text-xs text-slate-700 flex items-start gap-3">
+            <Lock className="w-4 h-4 text-slate-500 shrink-0 mt-0.5" />
+            <div>
+              <span className="font-semibold text-slate-900">
+                Producto vinculado con el sistema del local:
+              </span>{" "}
+              el código, el precio base y el stock físico se actualizan automáticamente en cada
+              sincronización (solo lectura). Todos los demás datos (nombre comercial, fotos, rubro,
+              marca, precio de oferta, venta suelta y visibilidad) se conservan en la tienda sin
+              pisarse.
             </div>
+          </div>
+        )}
 
-            <div className="space-y-1.5">
-              <label className="text-xs font-bold text-slate-700">SKU / Código Apollo *</label>
+        {/* SECCIÓN 1: DATOS BÁSICOS */}
+        <section className="bg-white rounded-lg border border-slate-200 p-6 space-y-5">
+          <h2 className="text-base font-semibold text-slate-900 pb-3 border-b border-slate-100">
+            Datos básicos
+          </h2>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                Código (SKU){" "}
+                {sincronizado && <span className="text-xs text-slate-500">(Sincronizado)</span>}
+              </label>
               <input
                 type="text"
                 value={sku}
+                readOnly={sincronizado}
                 onChange={(e) => setSku(e.target.value)}
-                placeholder="Ej: 100155"
-                className="w-full h-11 px-4 rounded-xl border border-slate-200 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-brand-cyan/20 focus:border-brand-cyan"
+                className={`w-full px-3.5 py-2 rounded-md border text-sm ${
+                  sincronizado
+                    ? "bg-slate-100 border-slate-200 text-slate-600 cursor-not-allowed"
+                    : "bg-white border-slate-300 text-slate-900 focus:border-[#0f172a] outline-none"
+                }`}
               />
             </div>
 
-            <div className="space-y-1.5">
-              <label className="text-xs font-bold text-slate-700">Código de Barras (EAN-13)</label>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                Nombre original en el sistema{" "}
+                {sincronizado && <span className="text-xs text-slate-500">(Solo lectura)</span>}
+              </label>
+              <input
+                type="text"
+                value={initialProduct?.nombreOriginalSistema || nombre}
+                readOnly
+                className="w-full px-3.5 py-2 rounded-md border border-slate-200 bg-slate-100 text-sm text-slate-600 cursor-not-allowed"
+              />
+            </div>
+
+            <div className="sm:col-span-2">
+              <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                Nombre visible en la tienda *
+              </label>
+              <input
+                type="text"
+                required
+                value={nombre}
+                onChange={(e) => setNombre(e.target.value)}
+                placeholder="Ej: Cloro Líquido Concentrado 10L"
+                className="w-full px-3.5 py-2 rounded-md border border-slate-300 text-sm text-slate-900 focus:border-[#0f172a] outline-none"
+              />
+              <p className="text-xs text-slate-500 mt-1">
+                Podés mejorar el nombre para tus clientes; la sincronización no lo sobrescribe.
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                Presentación / Envase
+              </label>
+              <input
+                type="text"
+                value={presentacion}
+                onChange={(e) => setPresentacion(e.target.value)}
+                placeholder="Ej: Bidón 5 Litros"
+                className="w-full px-3.5 py-2 rounded-md border border-slate-300 text-sm text-slate-900 focus:border-[#0f172a] outline-none"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                Código de barras
+              </label>
               <input
                 type="text"
                 value={barcode}
+                readOnly={sincronizado}
                 onChange={(e) => setBarcode(e.target.value)}
-                placeholder="Ej: 7799175004441"
-                className="w-full h-11 px-4 rounded-xl border border-slate-200 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-brand-cyan/20 focus:border-brand-cyan"
+                className={`w-full px-3.5 py-2 rounded-md border text-sm ${
+                  sincronizado
+                    ? "bg-slate-100 border-slate-200 text-slate-600 cursor-not-allowed"
+                    : "bg-white border-slate-300 text-slate-900 focus:border-[#0f172a] outline-none"
+                }`}
               />
             </div>
 
-            <div className="space-y-1.5">
-              <label className="text-xs font-bold text-slate-700">Categoría Web</label>
-              <select
-                value={categoryId}
-                onChange={(e) => setCategoryId(e.target.value)}
-                className="w-full h-11 px-4 rounded-xl border border-slate-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand-cyan/20 focus:border-brand-cyan"
+            <div className="sm:col-span-2">
+              <label className="block text-sm font-medium text-slate-700 mb-1.5">Descripción</label>
+              <textarea
+                rows={3}
+                value={descripcion}
+                onChange={(e) => setDescripcion(e.target.value)}
+                placeholder="Características principales y usos del producto..."
+                className="w-full px-3.5 py-2 rounded-md border border-slate-300 text-sm text-slate-900 focus:border-[#0f172a] outline-none resize-none"
+              />
+            </div>
+
+            <div className="sm:col-span-2">
+              <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                Modo de uso y dilución (opcional)
+              </label>
+              <textarea
+                rows={2}
+                value={modoDeUso}
+                onChange={(e) => setModoDeUso(e.target.value)}
+                placeholder="Indicación breve de cómo aplicarlo o diluirlo..."
+                className="w-full px-3.5 py-2 rounded-md border border-slate-300 text-sm text-slate-900 focus:border-[#0f172a] outline-none resize-none"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                Superficies recomendadas (opcional)
+              </label>
+              <input
+                type="text"
+                value={superficiesAptas}
+                onChange={(e) => setSuperficiesAptas(e.target.value)}
+                placeholder="Ej: Pisos cerámicos, piletas, azulejos"
+                className="w-full px-3.5 py-2 rounded-md border border-slate-300 text-sm text-slate-900 focus:border-[#0f172a] outline-none"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                Precauciones (opcional)
+              </label>
+              <input
+                type="text"
+                value={advertencias}
+                onChange={(e) => setAdvertencias(e.target.value)}
+                placeholder="Ej: No mezclar con ácidos ni amoníaco"
+                className="w-full px-3.5 py-2 rounded-md border border-slate-300 text-sm text-slate-900 focus:border-[#0f172a] outline-none"
+              />
+            </div>
+          </div>
+        </section>
+
+        {/* SECCIÓN 2: FOTOS */}
+        <section className="bg-white rounded-lg border border-slate-200 p-6 space-y-4">
+          <h2 className="text-base font-semibold text-slate-900 pb-3 border-b border-slate-100">
+            Fotos
+          </h2>
+
+          <div className="flex flex-wrap gap-4">
+            {imagenes.map((img, idx) => (
+              <div
+                key={idx}
+                className="relative w-24 h-24 rounded-md border border-slate-200 bg-slate-50 overflow-hidden group"
               >
-                {categories.map((cat) => (
-                  <option key={cat.id} value={cat.id}>
-                    {cat.name}
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={img} alt={nombre} className="w-full h-full object-cover" />
+                <button
+                  type="button"
+                  onClick={() => handleRemoveImage(idx)}
+                  className="absolute top-1 right-1 p-1 rounded-md bg-slate-900/80 text-white hover:bg-red-600 transition-colors"
+                  aria-label="Quitar foto"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            ))}
+
+            <label className="w-24 h-24 rounded-md border border-dashed border-slate-300 hover:border-slate-400 bg-slate-50 flex flex-col items-center justify-center gap-1.5 text-xs font-medium text-slate-600 cursor-pointer transition-colors">
+              <Upload className="w-4 h-4 text-slate-500" />
+              <span>Subir foto</span>
+              <input type="file" accept="image/*" onChange={handleImageFile} className="hidden" />
+            </label>
+          </div>
+
+          <div className="flex items-center gap-2 max-w-md pt-2">
+            <input
+              type="text"
+              value={nuevaImagenUrl}
+              onChange={(e) => setNuevaImagenUrl(e.target.value)}
+              placeholder="O pegá el enlace de una imagen..."
+              className="flex-1 px-3 py-2 rounded-md border border-slate-300 text-xs text-slate-800 focus:border-[#0f172a] outline-none"
+            />
+            <button
+              type="button"
+              onClick={handleAddImageUrl}
+              className="px-3 py-2 rounded-md border border-slate-300 bg-white hover:bg-slate-50 text-xs font-medium text-slate-700"
+            >
+              Agregar
+            </button>
+          </div>
+        </section>
+
+        {/* SECCIÓN 3: PRECIO Y STOCK */}
+        <section className="bg-white rounded-lg border border-slate-200 p-6 space-y-5">
+          <h2 className="text-base font-semibold text-slate-900 pb-3 border-b border-slate-100">
+            Precio y stock
+          </h2>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                Precio de venta{" "}
+                {sincronizado && <span className="text-xs text-slate-500">(Sincronizado)</span>}
+              </label>
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-slate-500">
+                  $
+                </span>
+                <input
+                  type="number"
+                  value={precioSistema}
+                  readOnly={sincronizado}
+                  onChange={(e) => setPrecioSistema(Number(e.target.value))}
+                  className={`w-full pl-7 pr-3.5 py-2 rounded-md border text-sm font-medium ${
+                    sincronizado
+                      ? "bg-slate-100 border-slate-200 text-slate-700 cursor-not-allowed"
+                      : "bg-white border-slate-300 text-slate-900 focus:border-[#0f172a] outline-none"
+                  }`}
+                />
+              </div>
+              {sincronizado && (
+                <p className="text-xs text-slate-500 mt-1">
+                  Valor actual: {money(precioSistema)} (viene del sistema local).
+                </p>
+              )}
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                Precio promocional en web
+              </label>
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-slate-500">
+                  $
+                </span>
+                <input
+                  type="number"
+                  value={precioOferta}
+                  onChange={(e) => setPrecioOferta(e.target.value)}
+                  placeholder="Sin oferta"
+                  className="w-full pl-7 pr-3.5 py-2 rounded-md border border-slate-300 text-sm text-slate-900 focus:border-[#0f172a] outline-none"
+                />
+              </div>
+              <p className="text-xs text-slate-500 mt-1">
+                Dejalo vacío para cobrar el precio normal.
+              </p>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                Stock físico{" "}
+                {sincronizado && <span className="text-xs text-slate-500">(Sincronizado)</span>}
+              </label>
+              <input
+                type="number"
+                value={stock}
+                readOnly={sincronizado}
+                onChange={(e) => setStock(Number(e.target.value))}
+                className={`w-full px-3.5 py-2 rounded-md border text-sm ${
+                  sincronizado
+                    ? "bg-slate-100 border-slate-200 text-slate-700 cursor-not-allowed"
+                    : "bg-white border-slate-300 text-slate-900 focus:border-[#0f172a] outline-none"
+                }`}
+              />
+            </div>
+          </div>
+
+          <div className="pt-3 border-t border-slate-100 space-y-4">
+            <AdminToggle
+              checked={esSuelto}
+              onChange={(val) => {
+                setEsSuelto(val);
+                if (val) setControlarStock(false);
+              }}
+              label="Venta a granel / producto suelto"
+              description="Si está activo, el cliente puede comprarlo aunque el stock del sistema sea 0."
+            />
+
+            {!esSuelto && (
+              <AdminToggle
+                checked={controlarStock}
+                onChange={setControlarStock}
+                label="Frenar ventas cuando el stock llegue a 0"
+                description="Desactivalo si querés seguir recibiendo pedidos de este artículo aunque figure sin stock."
+              />
+            )}
+          </div>
+        </section>
+
+        {/* SECCIÓN 4: RUBRO Y MARCA */}
+        <section className="bg-white rounded-lg border border-slate-200 p-6 space-y-5">
+          <h2 className="text-base font-semibold text-slate-900 pb-3 border-b border-slate-100">
+            Rubro y marca
+          </h2>
+          <p className="text-xs text-slate-500 -mt-2">
+            Esta clasificación se administra en la tienda y no se modifica al sincronizar.
+          </p>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1.5">Rubro</label>
+              <select
+                value={rubroId}
+                onChange={(e) => {
+                  setRubroId(e.target.value);
+                  setSubrubroId("");
+                }}
+                className="w-full px-3.5 py-2 rounded-md border border-slate-300 text-sm text-slate-900 bg-white focus:border-[#0f172a] outline-none"
+              >
+                <option value="">Sin rubro asignado</option>
+                {rubros.map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {r.nombre}
                   </option>
                 ))}
               </select>
             </div>
 
-            <div className="space-y-1.5">
-              <label className="text-xs font-bold text-slate-700">Marca Comercial</label>
-              <input
-                type="text"
-                value={brand}
-                onChange={(e) => setBrand(e.target.value)}
-                placeholder="Ej: Aromanza, Saphirus, Higiene Uruguay, Skip"
-                className="w-full h-11 px-4 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-brand-cyan/20 focus:border-brand-cyan"
-              />
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1.5">Subrubro</label>
+              <select
+                value={subrubroId}
+                onChange={(e) => setSubrubroId(e.target.value)}
+                disabled={!rubroId || subrubrosDisponibles.length === 0}
+                className="w-full px-3.5 py-2 rounded-md border border-slate-300 text-sm text-slate-900 bg-white focus:border-[#0f172a] outline-none disabled:bg-slate-100 disabled:text-slate-400"
+              >
+                <option value="">Sin subrubro</option>
+                {subrubrosDisponibles.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.nombre}
+                  </option>
+                ))}
+              </select>
             </div>
 
-            <div className="md:col-span-2 space-y-1.5">
-              <label className="text-xs font-bold text-slate-700">Descripción Comercial</label>
-              <textarea
-                rows={3}
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                placeholder="Explicá las características principales del producto..."
-                className="w-full p-4 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-brand-cyan/20 focus:border-brand-cyan resize-none"
-              />
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1.5">Marca</label>
+              <select
+                value={marcaId}
+                onChange={(e) => setMarcaId(e.target.value)}
+                className="w-full px-3.5 py-2 rounded-md border border-slate-300 text-sm text-slate-900 bg-white focus:border-[#0f172a] outline-none"
+              >
+                <option value="">Sin marca</option>
+                {marcas.map((m) => (
+                  <option key={m.id} value={m.id}>
+                    {m.nombre}
+                  </option>
+                ))}
+              </select>
             </div>
           </div>
-        </div>
-      )}
+        </section>
 
-      {/* ============================================================== */}
-      {/* PESTAÑA 2: TIPO & PRESENTACIÓN (ENVASADOS VS SUELTOS)           */}
-      {/* ============================================================== */}
-      {activeTab === 'tipo' && (
-        <div className="bg-white p-6 sm:p-8 rounded-2xl border border-slate-200 shadow-2xs space-y-6">
-          <div className="border-b border-slate-100 pb-4">
-            <h3 className="font-display font-bold text-base text-slate-900">Modalidad de Venta y Stock</h3>
-            <p className="text-xs text-slate-500">Definí si es un producto comercial envasado o si se vende suelto/a granel en unidades fijadas por la tienda.</p>
-          </div>
+        {/* SECCIÓN 5: VISIBILIDAD Y ELIMINACIÓN */}
+        <section className="bg-white rounded-lg border border-slate-200 p-6 space-y-5">
+          <h2 className="text-base font-semibold text-slate-900 pb-3 border-b border-slate-100">
+            Visibilidad
+          </h2>
 
-          {/* Selector de Tipo */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div
-              onClick={() => setIsBulk(false)}
-              className={`p-5 rounded-2xl border-2 cursor-pointer transition-all flex items-start gap-4 ${
-                !isBulk 
-                  ? 'border-brand-blue bg-blue-50/40 text-brand-blue shadow-xs' 
-                  : 'border-slate-200 hover:border-slate-300'
-              }`}
-            >
-              <div className={`p-3 rounded-xl ${!isBulk ? 'bg-brand-blue text-white' : 'bg-slate-100 text-slate-600'}`}>
-                <Package className="w-6 h-6" />
-              </div>
+          <AdminToggle
+            checked={activo}
+            onChange={setActivo}
+            label="Mostrar producto en la tienda"
+            description="Si lo desactivás, el producto queda oculto para los clientes pero sigue recibiendo actualizaciones de precio."
+          />
+
+          {!isNew && initialProduct && (
+            <div className="pt-4 border-t border-slate-100 flex items-center justify-between gap-4">
               <div>
-                <h4 className="font-bold text-sm text-slate-900">Producto Envasado de Fábrica</h4>
-                <p className="text-xs text-slate-500 mt-1 leading-relaxed">
-                  Artículos de marca comercial con stock numérico controlado en la web (ej: Saphirus, Difusores, Jabones en caja).
-                </p>
-              </div>
-            </div>
-
-            <div
-              onClick={() => setIsBulk(true)}
-              className={`p-5 rounded-2xl border-2 cursor-pointer transition-all flex items-start gap-4 ${
-                isBulk 
-                  ? 'border-brand-cyan bg-cyan-50/40 text-cyan-900 shadow-xs' 
-                  : 'border-slate-200 hover:border-slate-300'
-              }`}
-            >
-              <div className={`p-3 rounded-xl ${isBulk ? 'bg-brand-cyan text-white' : 'bg-slate-100 text-slate-600'}`}>
-                <Droplet className="w-6 h-6" />
-              </div>
-              <div>
-                <h4 className="font-bold text-sm text-slate-900">Producto Suelto / A Granel</h4>
-                <p className="text-xs text-slate-500 mt-1 leading-relaxed">
-                  Químicos envasados por la tienda en presentaciones fijas (ej: Cloro Bidón 5L, Detergente 2L, Recarga).
-                </p>
-              </div>
-            </div>
-          </div>
-
-          {/* Si es Suelto: Configuración Detallada */}
-          {isBulk ? (
-            <div className="bg-cyan-50/60 p-6 rounded-2xl border border-cyan-200/80 space-y-5">
-              <div className="flex items-center gap-2 text-cyan-950 font-bold text-sm">
-                <Sparkles className="w-4 h-4 text-brand-cyan" />
-                <span>Parámetros de Producto Suelto (Fijados por la Tienda)</span>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-                <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-slate-700">Unidad de Medida</label>
-                  <select
-                    value={bulkUnit}
-                    onChange={(e) => setBulkUnit(e.target.value)}
-                    className="w-full h-11 px-4 rounded-xl border border-slate-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand-cyan"
-                  >
-                    <option value="Litros">Litros (L)</option>
-                    <option value="Kilogramos">Kilogramos (Kg)</option>
-                    <option value="Unidades">Unidades / Bidón</option>
-                  </select>
-                </div>
-
-                <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-slate-700">Presentación Específica Fijada *</label>
-                  <input
-                    type="text"
-                    value={bulkPresentation}
-                    onChange={(e) => setBulkPresentation(e.target.value)}
-                    placeholder="Ej: Bidón 5 Litros, Botella 2L, Recarga (Traé tu envase)"
-                    className="w-full h-11 px-4 rounded-xl border border-slate-200 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-brand-cyan"
-                  />
-                  <p className="text-[11px] text-slate-500">Es la unidad fija en la que el cliente compra el producto suelto.</p>
+                <div className="text-sm font-medium text-slate-900">Eliminar producto</div>
+                <div className="text-xs text-slate-500">
+                  Quita el producto del catálogo de la tienda.
                 </div>
               </div>
-
-              {/* Opciones de envase y WhatsApp */}
-              <div className="pt-2 space-y-3">
-                <label className="flex items-center gap-3 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={includesContainer}
-                    onChange={(e) => setIncludesContainer(e.target.checked)}
-                    className="w-4 h-4 rounded text-brand-cyan focus:ring-brand-cyan"
-                  />
-                  <span className="text-xs font-semibold text-slate-800">
-                    Incluye envase plástico nuevo descartable (si no está tildado, se indica *"Traé tu propio envase para recarga"*).
-                  </span>
-                </label>
-
-                <label className="flex items-center gap-3 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={requiresStockInquiry}
-                    onChange={(e) => setRequiresStockInquiry(e.target.checked)}
-                    className="w-4 h-4 rounded text-brand-cyan focus:ring-brand-cyan"
-                  />
-                  <span className="text-xs font-semibold text-slate-800">
-                    Sujeto a confirmación de stock físico en local (Muestra botón *"Consultar disponibilidad en local por WhatsApp"*).
-                  </span>
-                </label>
-              </div>
-            </div>
-          ) : (
-            /* Si es Envasado: Control Numérico */
-            <div className="bg-slate-50 p-6 rounded-2xl border border-slate-200 space-y-4">
-              <h4 className="font-bold text-sm text-slate-800">Control de Stock Numérico (Envasado)</h4>
-              <div className="max-w-xs space-y-1.5">
-                <label className="text-xs font-bold text-slate-700">Cantidad en Stock Web</label>
-                <div className="flex items-center gap-2">
-                  <input
-                    type="number"
-                    min={0}
-                    value={stock}
-                    onChange={(e) => setStock(parseInt(e.target.value, 10) || 0)}
-                    className="w-full h-11 px-4 rounded-xl border border-slate-200 text-sm font-bold text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-brand-cyan"
-                  />
-                  <span className="text-xs font-bold text-slate-500">unidades</span>
-                </div>
-              </div>
+              <button
+                type="button"
+                onClick={() => setShowDeleteConfirm(true)}
+                className="px-3.5 py-2 rounded-md border border-red-200 text-red-700 hover:bg-red-50 text-xs font-medium transition-colors"
+              >
+                Eliminar producto
+              </button>
             </div>
           )}
-        </div>
-      )}
+        </section>
 
-      {/* ============================================================== */}
-      {/* PESTAÑA 3: PRECIOS, OFERTAS Y VOLUMEN                         */}
-      {/* ============================================================== */}
-      {activeTab === 'precios' && (
-        <div className="bg-white p-6 sm:p-8 rounded-2xl border border-slate-200 shadow-2xs space-y-6">
-          <div className="border-b border-slate-100 pb-4">
-            <h3 className="font-display font-bold text-base text-slate-900">Precios, Descuentos y Promociones</h3>
-            <p className="text-xs text-slate-500">Configurá el precio de venta final, ofertas tachadas y descuentos por compra mayorista.</p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="space-y-1.5">
-              <label className="text-xs font-bold text-slate-700">Precio de Venta Final ($ ARS) *</label>
-              <div className="relative">
-                <span className="absolute left-4 top-1/2 -translate-y-1/2 font-bold text-slate-400">$</span>
-                <input
-                  type="number"
-                  required
-                  min={0}
-                  value={price}
-                  onChange={(e) => setPrice(parseFloat(e.target.value) || 0)}
-                  className="w-full h-12 pl-8 pr-4 rounded-xl border border-slate-200 font-extrabold text-lg text-slate-900 focus:outline-none focus:ring-2 focus:ring-brand-cyan"
-                />
-              </div>
-              <p className="text-[11px] text-slate-400">Precio final con IVA incluido para el consumidor.</p>
-            </div>
-
-            {/* Módulo de Oferta / Precio Tachado */}
-            <div className="space-y-3 p-4 rounded-2xl bg-amber-50/50 border border-amber-200/80">
-              <div className="flex items-center justify-between">
-                <label className="text-xs font-bold text-amber-950 flex items-center gap-1.5 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={isOnSale}
-                    onChange={(e) => setIsOnSale(e.target.checked)}
-                    className="w-4 h-4 rounded text-amber-600 focus:ring-amber-500"
-                  />
-                  <span>Activar Precio de Oferta / Promoción</span>
-                </label>
-                {discountPercentage > 0 && isOnSale && (
-                  <span className="px-2 py-0.5 rounded-full text-xs font-black bg-amber-500 text-white">
-                    -{discountPercentage}% OFF
-                  </span>
-                )}
-              </div>
-
-              {isOnSale && (
-                <div className="space-y-1.5 pt-2">
-                  <label className="text-xs font-semibold text-slate-700">Precio Original Anterior (Tachado)</label>
-                  <div className="relative">
-                    <span className="absolute left-4 top-1/2 -translate-y-1/2 font-bold text-slate-400">$</span>
-                    <input
-                      type="number"
-                      min={price}
-                      value={compareAtPrice}
-                      onChange={(e) => setCompareAtPrice(parseFloat(e.target.value) || 0)}
-                      placeholder="Ej: 4200"
-                      className="w-full h-10 pl-8 pr-4 rounded-xl border border-slate-200 text-sm font-bold text-slate-700 bg-white"
-                    />
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Descuentos por Cantidad / Mayorista */}
-          <div className="pt-4 border-t border-slate-100 space-y-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <h4 className="font-bold text-sm text-slate-900">Descuentos por Cantidad (Venta Mayorista)</h4>
-                <p className="text-xs text-slate-500">Permite establecer un precio más económico llevando por bulto cerrado o múltiples unidades.</p>
-              </div>
-              <Button type="button" onClick={addVolumeDiscount} variant="outline" size="sm" className="h-8 gap-1 rounded-xl text-xs font-bold">
-                <Plus className="w-3.5 h-3.5" />
-                <span>Agregar Escala</span>
-              </Button>
-            </div>
-
-            {volumeDiscounts.length === 0 ? (
-              <div className="p-4 rounded-xl bg-slate-50 text-center text-xs text-slate-500 border border-dashed border-slate-200">
-                No hay escalas de descuento mayorista configuradas para este producto.
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {volumeDiscounts.map((disc, idx) => (
-                  <div key={idx} className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl border border-slate-200">
-                    <span className="text-xs font-semibold text-slate-600">Llevando a partir de:</span>
-                    <input
-                      type="number"
-                      min={2}
-                      value={disc.minQty}
-                      onChange={(e) => {
-                        const val = parseInt(e.target.value, 10) || 2;
-                        const updated = [...volumeDiscounts];
-                        updated[idx].minQty = val;
-                        setVolumeDiscounts(updated);
-                      }}
-                      className="w-20 h-9 px-2 text-center rounded-lg border border-slate-200 bg-white text-xs font-bold"
-                    />
-                    <span className="text-xs font-semibold text-slate-600">unidades, precio unitario:</span>
-                    <div className="relative">
-                      <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">$</span>
-                      <input
-                        type="number"
-                        min={0}
-                        value={disc.unitPrice}
-                        onChange={(e) => {
-                          const val = parseFloat(e.target.value) || 0;
-                          const updated = [...volumeDiscounts];
-                          updated[idx].unitPrice = val;
-                          setVolumeDiscounts(updated);
-                        }}
-                        className="w-28 h-9 pl-6 pr-2 rounded-lg border border-slate-200 bg-white text-xs font-bold"
-                      />
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => removeVolumeDiscount(idx)}
-                      className="p-2 text-rose-500 hover:bg-rose-50 rounded-lg ml-auto"
-                      title="Eliminar escala"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Badges y Etiquetas Visuales */}
-          <div className="pt-4 border-t border-slate-100 space-y-3">
-            <h4 className="font-bold text-sm text-slate-900">Etiquetas Promocionales (Badges)</h4>
-            <div className="flex flex-wrap gap-2">
-              {availableBadges.map((b) => {
-                const isSelected = badges.includes(b);
-                return (
-                  <button
-                    key={b}
-                    type="button"
-                    onClick={() => toggleBadge(b)}
-                    className={`px-3 py-1.5 rounded-full text-xs font-bold border transition-all ${
-                      isSelected
-                        ? 'bg-slate-900 text-white border-slate-900 shadow-xs'
-                        : 'bg-slate-100 text-slate-600 border-slate-200 hover:bg-slate-200'
-                    }`}
-                  >
-                    {isSelected ? `✓ ${b}` : `+ ${b}`}
-                  </button>
-                );
-              })}
-            </div>
+        {/* Barra inferior fija de guardado */}
+        <div className="fixed bottom-0 left-0 lg:left-60 right-0 bg-white border-t border-slate-200 px-6 sm:px-8 py-3.5 z-30">
+          <div className="max-w-4xl mx-auto flex items-center justify-end gap-3">
+            <Link
+              href="/admin/productos"
+              className="px-4 py-2 rounded-md border border-slate-300 text-slate-700 hover:bg-slate-50 text-sm font-medium transition-colors"
+            >
+              Cancelar
+            </Link>
+            <button
+              type="submit"
+              disabled={isSaving}
+              className="px-5 py-2 rounded-md bg-[#06b6d4] hover:bg-[#0891b2] text-white text-sm font-medium transition-colors disabled:opacity-60"
+            >
+              {isSaving ? "Guardando..." : "Guardar cambios"}
+            </button>
           </div>
         </div>
-      )}
+      </form>
 
-      {/* ============================================================== */}
-      {/* PESTAÑA 4: FICHA TÉCNICA & MODO DE USO                         */}
-      {/* ============================================================== */}
-      {activeTab === 'ficha' && (
-        <div className="bg-white p-6 sm:p-8 rounded-2xl border border-slate-200 shadow-2xs space-y-6">
-          <div className="border-b border-slate-100 pb-4">
-            <h3 className="font-display font-bold text-base text-slate-900">Ficha Técnica e Instrucciones de Uso</h3>
-            <p className="text-xs text-slate-500">Información esencial para que el cliente sepa cómo diluir, en qué superficies usarlo y qué precauciones tomar.</p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="space-y-1.5">
-              <label className="text-xs font-bold text-slate-700">Fragancia / Aroma</label>
-              <input
-                type="text"
-                value={fragrance}
-                onChange={(e) => setFragrance(e.target.value)}
-                placeholder="Ej: Lavanda, Limón, Pino, Floral, Sin aroma"
-                className="w-full h-11 px-4 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-brand-cyan"
-              />
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="text-xs font-bold text-slate-700">Rendimiento Estimado</label>
-              <input
-                type="text"
-                value={yieldInfo}
-                onChange={(e) => setYieldInfo(e.target.value)}
-                placeholder="Ej: Rinde hasta 50 baldes, Rinde 20 lavados"
-                className="w-full h-11 px-4 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-brand-cyan"
-              />
-            </div>
-
-            <div className="md:col-span-2 space-y-1.5">
-              <label className="text-xs font-bold text-slate-700">Modo de Uso y Dilución Recomendada</label>
-              <textarea
-                rows={2}
-                value={dilutionInstructions}
-                onChange={(e) => setDilutionInstructions(e.target.value)}
-                placeholder="Ej: 1 pocillo (100 ml) en 10 litros de agua para pisos. Para manchas rebeldes, aplicar puro."
-                className="w-full p-4 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-brand-cyan resize-none"
-              />
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="text-xs font-bold text-slate-700">Superficies Aptas</label>
-              <input
-                type="text"
-                value={suitableSurfaces}
-                onChange={(e) => setSuitableSurfaces(e.target.value)}
-                placeholder="Ej: Pisos cerámicos, porcelanatos, acero inoxidable, azulejos"
-                className="w-full h-11 px-4 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-brand-cyan"
-              />
-            </div>
-
-            <div className="space-y-1.5">
-              <label className="text-xs font-bold text-slate-700">Precauciones y Advertencias</label>
-              <input
-                type="text"
-                value={precautions}
-                onChange={(e) => setPrecautions(e.target.value)}
-                placeholder="Ej: Usar guantes de goma. No mezclar con lavandina ni ácidos."
-                className="w-full h-11 px-4 rounded-xl border border-slate-200 text-sm focus:outline-none focus:ring-2 focus:ring-brand-cyan"
-              />
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ============================================================== */}
-      {/* PESTAÑA 5: FOTOS & GALERÍA                                     */}
-      {/* ============================================================== */}
-      {activeTab === 'fotos' && (
-        <div className="bg-white p-6 sm:p-8 rounded-2xl border border-slate-200 shadow-2xs space-y-6">
-          <div className="border-b border-slate-100 pb-4">
-            <h3 className="font-display font-bold text-base text-slate-900">Galería de Imágenes</h3>
-            <p className="text-xs text-slate-500">Fotografías del producto tomadas en el local o provistas por el fabricante.</p>
-          </div>
-
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-            {images.map((img, idx) => (
-              <div key={idx} className="relative aspect-square rounded-2xl bg-slate-100 border-2 border-brand-cyan overflow-hidden group">
-                <img src={img} alt="Foto producto" className="w-full h-full object-cover" />
-                <div className="absolute top-2 left-2 bg-brand-cyan text-white text-[10px] font-bold px-2 py-0.5 rounded-md shadow-xs">
-                  Portada Principal
-                </div>
-              </div>
-            ))}
-
-            <div className="aspect-square rounded-2xl border-2 border-dashed border-slate-300 hover:border-brand-cyan bg-slate-50 flex flex-col items-center justify-center p-4 text-center cursor-pointer transition-colors group">
-              <div className="w-10 h-10 rounded-full bg-slate-100 group-hover:bg-cyan-50 flex items-center justify-center text-slate-500 group-hover:text-brand-cyan mb-2">
-                <Plus className="w-5 h-5" />
-              </div>
-              <span className="text-xs font-bold text-slate-700 group-hover:text-brand-cyan">Subir otra foto</span>
-              <span className="text-[10px] text-slate-400 mt-0.5">JPG o PNG</span>
-            </div>
-          </div>
-        </div>
-      )}
-
-    </form>
+      <ConfirmDeleteModal
+        isOpen={showDeleteConfirm}
+        onClose={() => setShowDeleteConfirm(false)}
+        onConfirm={handleConfirmDelete}
+        title="Eliminar producto"
+        itemName={initialProduct?.nombre || ""}
+        isDeleting={isDeleting}
+        warningText="Si solo querés que no aparezca temporalmente en el catálogo, te recomendamos ocultarlo con el interruptor de visibilidad."
+      />
+    </div>
   );
 }

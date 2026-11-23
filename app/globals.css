@@ -37,6 +37,21 @@
     --muted-foreground: #64748b;
     --border: #e2e8f0;
     --radius: 0.75rem;
+
+    /* Variables centralizadas del panel de administración */
+    --admin-navy: #0f172a;
+    --admin-navy-hover: #1e293b;
+    --admin-navy-deep: #020617;
+    --admin-accent: #06b6d4;
+    --admin-accent-hover: #0891b2;
+    --admin-bg: #f8fafc;
+    --admin-surface: #ffffff;
+    --admin-surface-muted: #f1f5f9;
+    --admin-border: #e2e8f0;
+    --admin-text: #0f172a;
+    --admin-text-muted: #475569;
+    --admin-text-subtle: #64748b;
+    --admin-radius: 0.5rem; /* 8px máximo */
   }
 }
 

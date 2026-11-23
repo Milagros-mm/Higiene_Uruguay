@@ -17,6 +17,7 @@ model User {
   email         String?   @unique              // Correo electrónico (único para login)
   emailVerified DateTime?                      // Fecha de verificación de email
   password      String?                        // Contraseña cifrada (para login con usuario/clave)
+  phone         String?                        // Teléfono de contacto / WhatsApp
   role          String    @default("CUSTOMER") // Rol: "ADMIN" (dueños) o "CUSTOMER" (clientes)
   
   accounts      Account[]                      // Cuentas vinculadas (Google, etc.)
@@ -63,23 +64,61 @@ model VerificationToken {
 }
 
 // =========================================================================
-// 2. CATÁLOGO: CATEGORÍAS
+// 2. CATÁLOGO: RUBROS, SUBRUBROS Y MARCAS (Administrados en el E-commerce)
 // =========================================================================
 
 model Category {
-  id          String    @id @default(cuid()) // ID único de la categoría en la web
-  name        String                         // Nombre visible (ej: "Lavandería", "Química Pesada")
-  slug        String    @unique              // Texto para la URL (ej: "lavanderia")
-  imageUrl    String?                        // Foto o icono de portada de la categoría
-  order       Int       @default(0)          // Número para ordenar las categorías en el menú
-  
-  // Campo preparado para vincular con la base local (ARUB en Stock_Articulo / stock_categori):
-  erpCode     String?   @unique              // Código de rubro en el ERP local (ej: "01")
-  
-  products    Product[]                      // Lista de productos que pertenecen a esta categoría
+  id            String        @id @default(cuid()) // ID único del rubro en el e-commerce
+  name          String                             // Nombre visible (ej: "Limpieza y Químicos", "Piscinas")
+  slug          String        @unique              // Texto amigable para la URL (ej: "limpieza-y-quimicos")
+  imageUrl      String?                            // Foto o icono de portada del rubro (opcional)
+  order         Int           @default(0)          // Orden de aparición en el menú de la tienda
+  isActive      Boolean       @default(true)       // true = visible en la tienda; false = oculto
 
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  // Código opcional para escalar a futuro si Apollo habilita la tabla de rubros (ARUB / RCod):
+  erpCode       String?       @unique              // Ej: "01". Mientras sea null, se gestiona 100% desde la web
+
+  subCategories SubCategory[]                      // Subrubros que dependen de este rubro
+  products      Product[]                          // Productos asignados a este rubro
+
+  createdAt     DateTime      @default(now())      // Fecha de creación
+  updatedAt     DateTime      @updatedAt           // Fecha de última modificación
+}
+
+model SubCategory {
+  id         String    @id @default(cuid()) // ID único del subrubro en el e-commerce
+  name       String                         // Nombre visible (ej: "Cloros", "Desengrasantes")
+  slug       String                         // Texto amigable para la URL (ej: "cloros")
+  order      Int       @default(0)          // Orden de aparición dentro del rubro
+  isActive   Boolean   @default(true)       // true = visible en la tienda; false = oculto
+
+  // Código opcional para escalar a futuro si Apollo habilita la tabla de subrubros (ASUB / SCod):
+  erpCode    String?   @unique              // Ej: "0101". Mientras sea null, se gestiona 100% desde la web
+
+  categoryId String                         // ID del rubro padre al que pertenece
+  category   Category  @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  products   Product[]                      // Productos asignados a este subrubro
+
+  createdAt  DateTime  @default(now())      // Fecha de creación
+  updatedAt  DateTime  @updatedAt           // Fecha de última modificación
+
+  @@unique([categoryId, slug])              // Evita slugs repetidos dentro de un mismo rubro
+}
+
+model Brand {
+  id        String    @id @default(cuid()) // ID único de la marca en el e-commerce
+  name      String                         // Nombre visible (ej: "Higiene Uruguay", "Spartan")
+  slug      String    @unique              // Texto amigable para la URL (ej: "higiene-uruguay")
+  logoUrl   String?                        // Logo opcional de la marca
+  isActive  Boolean   @default(true)       // true = visible en filtros; false = oculta
+
+  // Código opcional para escalar a futuro si Apollo habilita la tabla de marcas (AMAR / MCod):
+  erpCode   String?   @unique              // Ej: "0001". Mientras sea null, se gestiona 100% desde la web
+
+  products  Product[]                      // Productos pertenecientes a esta marca
+
+  createdAt DateTime  @default(now())      // Fecha de creación
+  updatedAt DateTime  @updatedAt           // Fecha de última modificación
 }
 
 // =========================================================================
@@ -87,37 +126,49 @@ model Category {
 // =========================================================================
 
 model Product {
-  id             String         @id @default(cuid()) // ID único web del producto
-  
-  // --- Datos Comerciales Visibles en la Web ---
-  name           String                              // Nombre comercial (viene de ADES del ERP)
-  slug           String         @unique              // URL amigable (ej: "lavandina-premium-5-lts")
-  description    String?        @db.Text             // Descripción detallada, modo de uso o precauciones
-  price          Float                               // Precio final de venta (viene de AVENTA)
-  compareAtPrice Float?                              // Precio anterior tachado (opcional para promociones)
-  unit           String?                             // Presentación: "Bidón 5L", "Litro suelto", "Pack x 3"
-  brand          String?                             // Marca comercial (viene de AMAR, ej: "Higiene Uruguay")
-  imageUrl       String?                             // Foto principal del producto (alojada en Supabase Storage)
-  
-  // --- Identificadores del ERP Local (Para sincronizar sin duplicar) ---
-  sku            String?        @unique              // Código del ERP local (viene de ACOD, ej: "0100003")
-  barcode        String?                             // Código de barras (viene de ABARRA o tabla stock_barcode)
+  id                String         @id @default(cuid()) // ID único web del producto
 
-  // --- Control de Stock Flexible (Resuelve sueltos vs envasados) ---
-  stock          Int            @default(0)          // Cantidad física (viene de AEXIS, para cuando lo carguen bien)
-  trackStock     Boolean        @default(false)      // false = siempre disponible (sueltos); true = frena si llega a 0
-  isBulk         Boolean        @default(false)      // true = producto a granel/suelto (ej: recarga de bidón)
+  // --- Datos Comerciales Visibles en la Web ---
+  name              String                              // Nombre comercial (en sincronización viene de ADES)
+  slug              String         @unique              // URL amigable (ej: "lavandina-premium-5-lts")
+  description       String?        @db.Text             // Descripción comercial del producto
+  usageInstructions String?        @db.Text             // Modo de uso / instrucciones de dilución
+  warnings          String?        @db.Text             // Advertencias y precauciones de seguridad
+  suitableSurfaces  String?        @db.Text             // Superficies aptas donde se puede aplicar
+  price             Float                               // Precio final de venta directo desde AVENTA (sin cálculos extra)
+  compareAtPrice    Float?                              // Precio anterior tachado (opcional, para mostrar ofertas en la web)
+  unit              String?                             // Presentación o contenido (ej: "Bidón 5L", "2 Lts", "Pack x 3")
+  imageUrl          String?                             // Foto principal del producto (alojada en Supabase Storage)
+
+  // --- Identificadores del ERP Local (Para sincronizar sin duplicar) ---
+  sku               String?        @unique              // Código único en Apollo (viene de ACOD, ej: "0100003")
+  barcode           String?                             // Código de barras (viene de ABARRA)
+
+  // --- Códigos crudos de Apollo (Solo referencia / escalabilidad futura) ---
+  // Guardan el ID que viene en Stock_Articulo sin sobrescribir la clasificación elegida en la web:
+  erpRubroCode      String?                             // Código crudo ARUB de Stock_Articulo
+  erpSubrubroCode   String?                             // Código crudo ASUB de Stock_Articulo
+  erpBrandCode      String?                             // Código crudo AMAR de Stock_Articulo
+
+  // --- Control de Stock Flexible (Resuelve sueltos vs envasados desde la web) ---
+  stock             Int            @default(0)          // Existencia física (viene de AEXIS en Apollo)
+  trackStock        Boolean        @default(false)      // false = no frena compra (ej: sueltos o stock condicional); true = frena si stock <= 0
+  isBulk            Boolean        @default(false)      // true = producto a granel/suelto (los dueños lo marcan en /admin)
 
   // --- Control de Publicación (Soberanía Web) ---
-  isActive       Boolean        @default(true)       // true = publicado en la tienda; false = oculto
-  
-  // --- Relación con Categoría e Imágenes adicionales ---
-  categoryId     String?                             // Categoría asignada
-  category       Category?      @relation(fields: [categoryId], references: [id])
-  images         ProductImage[]                      // Fotos secundarias del producto
+  isActive          Boolean        @default(true)       // true = publicado en la tienda (por defecto entran activos); false = oculto
 
-  createdAt      DateTime       @default(now())
-  updatedAt      DateTime       @updatedAt
+  // --- Clasificación del E-commerce e Imágenes ---
+  categoryId        String?                             // Rubro asignado desde el e-commerce
+  category          Category?      @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  subCategoryId     String?                             // Subrubro asignado desde el e-commerce
+  subCategory       SubCategory?   @relation(fields: [subCategoryId], references: [id], onDelete: SetNull)
+  brandId           String?                             // Marca asignada desde el e-commerce
+  brand             Brand?         @relation(fields: [brandId], references: [id], onDelete: SetNull)
+  images            ProductImage[]                      // Galería de fotos secundarias del producto
+
+  createdAt         DateTime       @default(now())      // Fecha de creación
+  updatedAt         DateTime       @updatedAt           // Fecha de última modificación
 }
 
 model ProductImage {

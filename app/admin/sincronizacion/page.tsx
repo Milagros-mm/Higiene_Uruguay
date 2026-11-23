@@ -1,99 +1,141 @@
-'use client';
+"use client";
 
-import React, { useState } from 'react';
-import { Button } from '@/frontend/components/ui/Button';
-import { RefreshCw, CheckCircle2, XCircle, Clock } from 'lucide-react';
-
-const mockLogs = [
-  { id: 1, date: '2026-09-28 15:30', status: 'SUCCESS', updated: 245 },
-  { id: 2, date: '2026-09-27 10:15', status: 'SUCCESS', updated: 240 },
-  { id: 3, date: '2026-09-26 09:00', status: 'ERROR', updated: 0 },
-];
+import React from "react";
+import { RefreshCw, CheckCircle2, AlertTriangle } from "lucide-react";
+import { useAdminCatalog, AdminPageHeader } from "@/frontend/context/AdminCatalogContext";
 
 export default function SyncPage() {
-  const [isSyncing, setIsSyncing] = useState(false);
-  const [logs, setLogs] = useState(mockLogs);
-
-  const handleSync = () => {
-    setIsSyncing(true);
-    // Simular sincronización
-    setTimeout(() => {
-      setIsSyncing(false);
-      setLogs([{ id: Date.now(), date: new Date().toLocaleString(), status: 'SUCCESS', updated: 250 }, ...logs]);
-      alert('Precios y stock actualizados correctamente');
-    }, 3000);
-  };
+  const { syncLogs, isSyncing, runSyncNow } = useAdminCatalog();
+  const ultimaSync = syncLogs[0];
 
   return (
-    <div className="min-h-full pb-12 bg-slate-50/50">
-      <div className="bg-white border-b border-slate-200 px-6 sm:px-8 py-8 mb-8">
-        <div className="max-w-7xl mx-auto">
-          <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
-            Actualización de precios y stock
-          </h1>
-          <p className="text-slate-500 mt-2 text-sm">
-            Mantené tu tienda al día actualizando la información de tus productos.
-          </p>
-        </div>
-      </div>
-      
-      <div className="px-6 sm:px-8 max-w-5xl mx-auto space-y-8">
-        
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 sm:p-8 flex flex-col sm:flex-row items-center justify-between gap-6 text-center sm:text-left">
-          <div>
-            <h3 className="font-bold text-xl text-slate-800">Actualizar información ahora</h3>
-            <p className="text-slate-600 mt-2 max-w-xl text-sm">
-              Al confirmar, los precios y la cantidad disponible de todos tus productos se pondrán al día.
-            </p>
-          </div>
-          
-          <Button 
-            onClick={handleSync} 
+    <div className="min-h-full pb-16">
+      <AdminPageHeader
+        title="Sincronización"
+        action={
+          <button
+            type="button"
+            onClick={runSyncNow}
             disabled={isSyncing}
-            className="bg-brand-cyan hover:bg-cyan-600 text-white font-bold py-3 px-6 rounded-xl flex items-center gap-2 whitespace-nowrap"
+            className="inline-flex items-center gap-2 px-4 py-2 rounded-md bg-[#06b6d4] hover:bg-[#0891b2] text-white text-sm font-medium transition-colors disabled:opacity-60"
           >
-            <RefreshCw className={`w-5 h-5 ${isSyncing ? 'animate-spin' : ''}`} />
-            <span>{isSyncing ? 'Actualizando...' : 'Actualizar precios y stock ahora'}</span>
-          </Button>
+            <RefreshCw className={`w-4 h-4 ${isSyncing ? "animate-spin" : ""}`} />
+            <span>{isSyncing ? "Sincronizando..." : "Sincronizar ahora"}</span>
+          </button>
+        }
+      />
+
+      <div className="px-6 sm:px-8 max-w-6xl mx-auto space-y-6">
+        {/* Estado actual y cómo funciona la sincronización */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Estado actual */}
+          <div className="bg-white rounded-lg border border-slate-200 p-6 space-y-4">
+            <h2 className="text-base font-semibold text-slate-900 pb-3 border-b border-slate-100">
+              Estado actual
+            </h2>
+
+            {ultimaSync ? (
+              <div className="space-y-3 text-sm">
+                <div className="flex items-center justify-between py-1">
+                  <span className="text-slate-500">Última actualización:</span>
+                  <span className="font-semibold text-slate-900">{ultimaSync.fecha}</span>
+                </div>
+                <div className="flex items-center justify-between py-1">
+                  <span className="text-slate-500">Resultado:</span>
+                  <span className="inline-flex items-center gap-1.5 font-medium text-emerald-700">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                    {ultimaSync.resultado}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between py-1">
+                  <span className="text-slate-500">Productos nuevos incorporados:</span>
+                  <span className="font-medium text-slate-900">{ultimaSync.nuevos}</span>
+                </div>
+                <div className="flex items-center justify-between py-1">
+                  <span className="text-slate-500">Precios y stock actualizados:</span>
+                  <span className="font-medium text-slate-900">{ultimaSync.actualizados}</span>
+                </div>
+              </div>
+            ) : (
+              <p className="text-sm text-slate-500">
+                Todavía no se realizó ninguna sincronización.
+              </p>
+            )}
+          </div>
+
+          {/* Explicación clara de qué datos trae y qué campos pisa */}
+          <div className="bg-white rounded-lg border border-slate-200 p-6 space-y-4">
+            <h2 className="text-base font-semibold text-slate-900 pb-3 border-b border-slate-100">
+              Cómo funciona la actualización con el sistema del local
+            </h2>
+
+            <div className="space-y-3 text-sm text-slate-700 leading-relaxed">
+              <div>
+                <span className="font-semibold text-slate-900">Qué información trae:</span>{" "}
+                incorpora los artículos de venta activos del sistema de facturación del local junto
+                con su código, precio de venta al público y cantidad física disponible.
+              </div>
+              <div>
+                <span className="font-semibold text-slate-900">Qué datos actualiza:</span> pone al
+                día únicamente el <strong>precio de venta</strong> y el{" "}
+                <strong>stock físico</strong> de cada producto.
+              </div>
+              <div>
+                <span className="font-semibold text-slate-900">Qué datos conserva intactos:</span>{" "}
+                nunca modifica las fotos, descripciones, rubros, subrubros, marcas, precios
+                promocionales ni la configuración de venta suelta que hayas cargado en este panel.
+              </div>
+            </div>
+          </div>
         </div>
 
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-          <div className="p-6 border-b border-slate-100">
-            <h3 className="font-bold text-lg text-slate-800">Últimas actualizaciones</h3>
+        {/* Historial de sincronizaciones */}
+        <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
+          <div className="px-6 py-4 border-b border-slate-200">
+            <h2 className="text-base font-semibold text-slate-900">
+              Historial de sincronizaciones
+            </h2>
           </div>
+
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm border-collapse">
               <thead>
-                <tr className="bg-slate-50/75 border-b border-slate-200 text-xs font-bold text-slate-500 uppercase">
-                  <th className="py-3 px-6">Fecha y Hora</th>
-                  <th className="py-3 px-6">Estado</th>
-                  <th className="py-3 px-6">Productos</th>
+                <tr className="bg-slate-50 border-b border-slate-200 text-xs font-semibold text-slate-600">
+                  <th className="py-3 px-5">Fecha y hora</th>
+                  <th className="py-3 px-5">Resultado</th>
+                  <th className="py-3 px-5 text-center">Nuevos</th>
+                  <th className="py-3 px-5 text-center">Actualizados</th>
+                  <th className="py-3 px-5 text-center">Con error</th>
+                  <th className="py-3 px-5">Observaciones</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {logs.map((log) => (
-                  <tr key={log.id} className="hover:bg-slate-50/50">
-                    <td className="py-4 px-6 text-slate-700 font-medium">
-                      <div className="flex items-center gap-2">
-                        <Clock className="w-4 h-4 text-slate-400" />
-                        {log.date}
-                      </div>
+                {syncLogs.map((log) => (
+                  <tr key={log.id} className="hover:bg-slate-50">
+                    <td className="py-3.5 px-5 font-medium text-slate-900 whitespace-nowrap">
+                      {log.fecha}
                     </td>
-                    <td className="py-4 px-6">
-                      {log.status === 'SUCCESS' ? (
-                        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-800">
-                          <CheckCircle2 className="w-4 h-4" />
-                          Correcta
+                    <td className="py-3.5 px-5 whitespace-nowrap">
+                      {log.conError > 0 ? (
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-xs font-medium bg-amber-50 text-amber-800 border border-amber-200">
+                          <AlertTriangle className="w-3.5 h-3.5" />
+                          {log.resultado}
                         </span>
                       ) : (
-                        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-red-100 text-red-800">
-                          <XCircle className="w-4 h-4" />
-                          Con Errores
-                        </span>
+                        <span className="text-slate-700 font-medium">{log.resultado}</span>
                       )}
                     </td>
-                    <td className="py-4 px-6 font-bold text-slate-700">
-                      {log.updated} actualizados
+                    <td className="py-3.5 px-5 text-center text-slate-800">{log.nuevos}</td>
+                    <td className="py-3.5 px-5 text-center text-slate-800">{log.actualizados}</td>
+                    <td className="py-3.5 px-5 text-center">
+                      {log.conError > 0 ? (
+                        <span className="font-semibold text-amber-800">{log.conError}</span>
+                      ) : (
+                        <span className="text-slate-400">0</span>
+                      )}
+                    </td>
+                    <td className="py-3.5 px-5 text-xs text-slate-600 max-w-md">
+                      {log.detalleError || "Sin observaciones."}
                     </td>
                   </tr>
                 ))}
@@ -101,7 +143,6 @@ export default function SyncPage() {
             </table>
           </div>
         </div>
-
       </div>
     </div>
   );
