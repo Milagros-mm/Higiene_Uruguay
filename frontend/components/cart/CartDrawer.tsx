@@ -169,6 +169,7 @@ export function CartDrawer() {
                             src={item.product.images[0]}
                             alt={item.product.name}
                             fill
+                            sizes="72px"
                             className="object-contain p-1"
                           />
                         ) : (

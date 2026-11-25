@@ -49,6 +49,7 @@ export function CartMiniPopup() {
               src={lastAddedItem.product.images[0]}
               alt={lastAddedItem.product.name}
               fill
+              sizes="56px"
               className="object-contain p-1"
             />
           ) : (

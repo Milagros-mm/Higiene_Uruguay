@@ -22,6 +22,7 @@ export const metadata: Metadata = {
 
 import { CartProvider } from "@/frontend/context/CartContext";
 import { CartDrawer } from "@/frontend/components/cart/CartDrawer";
+import { AuthProvider } from "@/frontend/context/AuthProvider";
 
 export default function RootLayout({
   children,
@@ -31,10 +32,12 @@ export default function RootLayout({
   return (
     <html lang="es" className={`${inter.variable} ${plusJakarta.variable} antialiased`}>
       <body className="min-h-screen bg-slate-50 text-slate-900 flex flex-col font-sans selection:bg-brand-cyan selection:text-white">
-        <CartProvider>
-          {children}
-          <CartDrawer />
-        </CartProvider>
+        <AuthProvider>
+          <CartProvider>
+            {children}
+            <CartDrawer />
+          </CartProvider>
+        </AuthProvider>
       </body>
     </html>
   );

@@ -1,14 +1,27 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { ShoppingCart, User, Search } from 'lucide-react';
 import { STORE } from '@/lib/store';
 import { useCart } from '@/frontend/context/CartContext';
 import { CartMiniPopup } from '@/frontend/components/cart/CartMiniPopup';
+import { UserMenuDropdown } from '@/frontend/components/layout/UserMenuDropdown';
 
 export function Header() {
   const { totalItems, openCart, isLoaded } = useCart();
+  const [searchTerm, setSearchTerm] = useState('');
+  const router = useRouter();
+
+  const handleSearch = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (searchTerm.trim()) {
+      router.push(`/productos?q=${encodeURIComponent(searchTerm.trim())}`);
+    } else {
+      router.push('/productos');
+    }
+  };
 
   return (
     <header className="sticky top-0 z-50 w-full bg-white/95 backdrop-blur-md border-b border-border shadow-xs">
@@ -56,17 +69,19 @@ export function Header() {
 
         {/* Search Bar - Full Width on Mobile, Centered Inline on Desktop */}
         <div className="w-full md:flex-1 md:max-w-2xl mx-auto">
-          <form onSubmit={(e) => e.preventDefault()} className="relative w-full">
+          <form onSubmit={handleSearch} className="relative w-full">
             <div className="relative flex items-center">
               <Search className="absolute left-3.5 md:left-4 h-4 w-4 md:h-5 md:w-5 text-muted-foreground pointer-events-none" />
               <input
                 type="search"
-                placeholder="¿Qué producto estás buscando?"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                placeholder="¿Qué producto estás buscando? (cloro, desengrasante, Spartan...)"
                 className="w-full h-10 md:h-12 pl-10 md:pl-12 pr-24 md:pr-28 rounded-full border border-slate-200 md:border-2 bg-slate-50 text-brand-slate text-xs md:text-sm placeholder:text-muted-foreground focus:bg-white focus:border-brand-cyan focus:outline-none focus:ring-2 focus:ring-brand-cyan/20 transition-all shadow-xs"
               />
               <button
                 type="submit"
-                className="absolute right-1 top-1 bottom-1 md:right-1.5 md:top-1.5 md:bottom-1.5 px-3 md:px-4 bg-brand-cyan hover:bg-brand-cyan-dark text-white rounded-full text-xs md:text-sm font-semibold transition-colors flex items-center gap-1.5 shadow-xs"
+                className="absolute right-1 top-1 bottom-1 md:right-1.5 md:top-1.5 md:bottom-1.5 px-3 md:px-4 bg-brand-cyan hover:bg-brand-cyan-dark text-white rounded-full text-xs md:text-sm font-semibold transition-colors flex items-center gap-1.5 shadow-xs cursor-pointer"
               >
                 Buscar
               </button>
@@ -76,16 +91,7 @@ export function Header() {
 
         {/* Account & Cart - Desktop View */}
         <div className="hidden md:flex items-center gap-2 md:gap-3 shrink-0">
-          <Link
-            href="/cuenta"
-            className="flex items-center gap-2 px-3 py-2 rounded-xl text-brand-slate hover:text-brand-blue hover:bg-slate-100 transition-colors"
-          >
-            <User className="h-5 w-5 text-brand-blue" />
-            <div className="text-left leading-tight hidden lg:block">
-              <span className="text-[11px] text-muted-foreground block">Bienvenido</span>
-              <span className="text-xs font-bold text-brand-blue">Mi Cuenta</span>
-            </div>
-          </Link>
+          <UserMenuDropdown />
 
           <div className="relative">
             <button

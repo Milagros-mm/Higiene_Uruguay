@@ -25,7 +25,7 @@ export function FeaturedProducts() {
           </div>
 
           <Link
-            href="/destacados"
+            href="/productos"
             className="inline-flex items-center gap-1.5 text-sm font-semibold text-slate-800 hover:text-brand-cyan transition-colors self-start md:self-auto group"
           >
             <span>Ver catálogo completo</span>
@@ -45,7 +45,7 @@ export function FeaturedProducts() {
         {/* Botón Central Inferior "Ver más" */}
         <div className="mt-12 sm:mt-14 text-center">
           <Link
-            href="/destacados"
+            href="/productos"
             className="inline-flex items-center justify-center gap-2 px-8 py-3.5 rounded-xl bg-white hover:bg-slate-100 text-slate-900 hover:text-brand-cyan border border-slate-300 hover:border-brand-cyan/60 font-bold text-sm shadow-xs hover:shadow-md transition-all duration-200 group active:scale-95"
           >
             <span>Ver más productos destacados</span>
