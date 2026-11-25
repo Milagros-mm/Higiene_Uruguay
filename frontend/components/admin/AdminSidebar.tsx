@@ -14,6 +14,7 @@ import {
   LogOut,
   X,
 } from "lucide-react";
+import { useAdminCatalog } from "@/frontend/context/AdminCatalogContext";
 
 interface AdminSidebarProps {
   isOpenMobile?: boolean;
@@ -31,6 +32,8 @@ const navigationItems = [
 
 export function AdminSidebar({ isOpenMobile = false, onCloseMobile }: AdminSidebarProps) {
   const pathname = usePathname();
+  const { pedidos } = useAdminCatalog();
+  const pedidosPendientesCount = pedidos.filter((p) => p.estado === "Pendiente").length;
 
   const isLinkActive = (href: string) => {
     if (href === "/admin") return pathname === "/admin";
@@ -48,14 +51,20 @@ export function AdminSidebar({ isOpenMobile = false, onCloseMobile }: AdminSideb
 
   const sidebarContent = (
     <aside className="w-60 bg-[#0f172a] text-slate-100 flex flex-col shrink-0 border-r border-slate-800 select-none h-full font-sans">
-      {/* Nombre del comercio sobrio */}
-      <div className="h-16 px-5 flex items-center justify-between border-b border-slate-800">
+      {/* Logo y nombre del comercio */}
+      <div className="h-16 px-4 flex items-center justify-between border-b border-slate-800">
         <Link
           href="/admin"
           onClick={onCloseMobile}
-          className="text-base font-semibold text-white tracking-tight"
+          className="flex items-center gap-2.5 text-base font-semibold text-white tracking-tight"
         >
-          Higiene Uruguay
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/logotipo.png"
+            alt="Higiene Uruguay"
+            className="w-8 h-8 rounded-md object-contain bg-white p-0.5 shrink-0"
+          />
+          <span>Higiene Uruguay</span>
         </Link>
 
         {onCloseMobile && (
@@ -75,20 +84,34 @@ export function AdminSidebar({ isOpenMobile = false, onCloseMobile }: AdminSideb
         {navigationItems.map((item) => {
           const Icon = item.icon;
           const isActive = isLinkActive(item.href);
+          const showBadge = item.href === "/admin/pedidos" && pedidosPendientesCount > 0;
 
           return (
             <Link
               key={item.name}
               href={item.href}
               onClick={onCloseMobile}
-              className={`flex items-center gap-3 px-3.5 py-2.5 rounded-md text-sm font-medium transition-colors ${
+              className={`flex items-center justify-between gap-3 px-3.5 py-2.5 rounded-md text-sm font-medium transition-colors ${
                 isActive
                   ? "bg-[#06b6d4] text-white font-semibold"
                   : "text-slate-300 hover:bg-[#1e293b] hover:text-white"
               }`}
             >
-              <Icon className={`w-4 h-4 shrink-0 ${isActive ? "text-white" : "text-slate-400"}`} />
-              <span>{item.name}</span>
+              <div className="flex items-center gap-3 min-w-0">
+                <Icon
+                  className={`w-4 h-4 shrink-0 ${isActive ? "text-white" : "text-slate-400"}`}
+                />
+                <span>{item.name}</span>
+              </div>
+              {showBadge && (
+                <span
+                  className={`px-2 py-0.5 rounded-md text-xs font-semibold ${
+                    isActive ? "bg-white/20 text-white" : "bg-amber-500 text-slate-950"
+                  }`}
+                >
+                  {pedidosPendientesCount}
+                </span>
+              )}
             </Link>
           );
         })}

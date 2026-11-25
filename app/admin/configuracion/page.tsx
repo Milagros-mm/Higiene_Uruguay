@@ -8,24 +8,48 @@ import {
   AdminTabs,
   AdminToggle,
   AdminDrawer,
+  AutoResizeTextarea,
+  ConfirmDeleteModal,
   AdminStoreConfig,
   AdminPanelUser,
 } from "@/frontend/context/AdminCatalogContext";
+import { money } from "@/frontend/utils/store";
 
 type ConfigTabId = "tienda" | "envios-pagos" | "usuarios";
 
+// Formatea número local argentino quitando 549 para mostrarlo limpio al usuario
+function toLocalWhatsAppInput(raw: string): string {
+  const digits = raw.replace(/\D/g, "");
+  if (digits.startsWith("549")) return digits.slice(3);
+  if (digits.startsWith("54")) return digits.slice(2);
+  return digits;
+}
+
+function toFullWhatsAppDigits(localInput: string): string {
+  const clean = localInput.replace(/\D/g, "").replace(/^0+/, "");
+  if (!clean) return "";
+  return clean.startsWith("549") ? clean : `549${clean}`;
+}
+
 export default function TiendaConfigPage() {
-  const { storeConfig, saveStoreConfig } = useAdminCatalog();
+  const { storeConfig, saveStoreConfig, showToast } = useAdminCatalog();
 
   const [activeTab, setActiveTab] = useState<ConfigTabId>("tienda");
   const [formData, setFormData] = useState<AdminStoreConfig>(() => storeConfig);
+  const [whatsappLocal, setWhatsappLocal] = useState<string>(() =>
+    toLocalWhatsAppInput(storeConfig.whatsapp),
+  );
+  const [whatsappError, setWhatsappError] = useState("");
   const [isSaving, setIsSaving] = useState(false);
 
-  // Modal para agregar usuario del panel
+  // Gestión de usuarios del panel (G.6)
+  const currentUserId = formData.usuariosPanel[0]?.id;
   const [userDrawerOpen, setUserDrawerOpen] = useState(false);
-  const [newUserName, setNewUserName] = useState("");
-  const [newUserEmail, setNewUserEmail] = useState("");
-  const [newUserRol, setNewUserRol] = useState<"Administrador" | "Operador">("Operador");
+  const [editingUser, setEditingUser] = useState<AdminPanelUser | null>(null);
+  const [userName, setUserName] = useState("");
+  const [userEmail, setUserEmail] = useState("");
+  const [userRol, setUserRol] = useState<"Administrador" | "Operador">("Operador");
+  const [confirmDeleteUser, setConfirmDeleteUser] = useState(false);
 
   const handleLogoFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -39,46 +63,121 @@ export default function TiendaConfigPage() {
     reader.readAsDataURL(file);
   };
 
-  const handleBankChange = (
-    index: number,
-    field: "banco" | "titular" | "alias" | "cbu",
-    value: string,
-  ) => {
-    setFormData((prev) => {
-      const updated = [...prev.cuentasBancarias];
-      updated[index] = { ...updated[index], [field]: value };
-      return { ...prev, cuentasBancarias: updated };
-    });
+  const handleWhatsappChange = (value: string) => {
+    const digitsOnly = value.replace(/\D/g, "");
+    setWhatsappLocal(digitsOnly);
+    if (digitsOnly.length < 8) {
+      setWhatsappError("Ingresá un número válido con código de área (ej: 3442334343).");
+    } else {
+      setWhatsappError("");
+    }
+    setFormData((prev) => ({ ...prev, whatsapp: toFullWhatsAppDigits(digitsOnly) }));
   };
 
-  const handleAddUser = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newUserName.trim() || !newUserEmail.trim()) return;
-    const newUser: AdminPanelUser = {
-      id: `usr-${Date.now()}`,
-      nombre: newUserName.trim(),
-      email: newUserEmail.trim(),
-      rol: newUserRol,
-      activo: true,
-    };
+  const handleTogglePaymentMethod = (id: string, habilitado: boolean) => {
     setFormData((prev) => ({
       ...prev,
-      usuariosPanel: [...prev.usuariosPanel, newUser],
+      mediosPago: prev.mediosPago.map((m) => (m.id === id ? { ...m, habilitado } : m)),
     }));
-    setNewUserName("");
-    setNewUserEmail("");
+  };
+
+  const openCreateUser = () => {
+    setEditingUser(null);
+    setUserName("");
+    setUserEmail("");
+    setUserRol("Operador");
+    setUserDrawerOpen(true);
+  };
+
+  const openEditUser = (user: AdminPanelUser) => {
+    setEditingUser(user);
+    setUserName(user.nombre);
+    setUserEmail(user.email);
+    setUserRol(user.rol);
+    setUserDrawerOpen(true);
+  };
+
+  const handleSaveUser = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!userName.trim() || !userEmail.trim()) return;
+
+    if (editingUser) {
+      setFormData((prev) => ({
+        ...prev,
+        usuariosPanel: prev.usuariosPanel.map((u) =>
+          u.id === editingUser.id
+            ? { ...u, nombre: userName.trim(), email: userEmail.trim(), rol: userRol }
+            : u,
+        ),
+      }));
+      showToast("Usuario actualizado");
+    } else {
+      const newUser: AdminPanelUser = {
+        id: `usr-${Date.now()}`,
+        nombre: userName.trim(),
+        email: userEmail.trim(),
+        rol: userRol,
+        activo: true,
+      };
+      setFormData((prev) => ({
+        ...prev,
+        usuariosPanel: [...prev.usuariosPanel, newUser],
+      }));
+      showToast("Usuario agregado. Se enviará un correo con su enlace de acceso.");
+    }
     setUserDrawerOpen(false);
   };
 
-  const handleToggleUserStatus = (id: string) => {
+  const activeAdminsCount = formData.usuariosPanel.filter(
+    (u) => u.rol === "Administrador" && u.activo,
+  ).length;
+
+  const canDeactivateOrDeleteUser = (user: AdminPanelUser) => {
+    if (user.id === currentUserId) return false;
+    if (user.rol === "Administrador" && user.activo && activeAdminsCount <= 1) return false;
+    return true;
+  };
+
+  const handleToggleUserStatus = (user: AdminPanelUser) => {
+    if (user.activo && !canDeactivateOrDeleteUser(user)) {
+      showToast("No podés desactivar tu propia cuenta ni al último administrador.", "warning");
+      return;
+    }
     setFormData((prev) => ({
       ...prev,
-      usuariosPanel: prev.usuariosPanel.map((u) => (u.id === id ? { ...u, activo: !u.activo } : u)),
+      usuariosPanel: prev.usuariosPanel.map((u) =>
+        u.id === user.id ? { ...u, activo: !u.activo } : u,
+      ),
     }));
+  };
+
+  const handleDeleteUser = () => {
+    if (!editingUser) return;
+    if (!canDeactivateOrDeleteUser(editingUser)) {
+      showToast("No podés eliminar tu propia cuenta ni al último administrador.", "warning");
+      setConfirmDeleteUser(false);
+      return;
+    }
+    setFormData((prev) => ({
+      ...prev,
+      usuariosPanel: prev.usuariosPanel.filter((u) => u.id !== editingUser.id),
+    }));
+    setConfirmDeleteUser(false);
+    setUserDrawerOpen(false);
+    showToast("Usuario eliminado");
+  };
+
+  const handleResetPassword = (user: AdminPanelUser) => {
+    showToast(`Se envió un enlace para restablecer la clave a ${user.email}`, "info");
   };
 
   const handleSubmit = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
+    if (whatsappLocal.length < 8) {
+      setWhatsappError("Ingresá un número válido de WhatsApp para recibir los pedidos.");
+      setActiveTab("tienda");
+      return;
+    }
     setIsSaving(true);
     try {
       await saveStoreConfig(formData);
@@ -89,19 +188,7 @@ export default function TiendaConfigPage() {
 
   return (
     <div className="min-h-full pb-28">
-      <AdminPageHeader
-        title="Configuración"
-        action={
-          <button
-            type="button"
-            onClick={() => handleSubmit()}
-            disabled={isSaving}
-            className="px-4 py-2 rounded-md bg-[#06b6d4] hover:bg-[#0891b2] text-white text-sm font-medium transition-colors disabled:opacity-60"
-          >
-            {isSaving ? "Guardando..." : "Guardar cambios"}
-          </button>
-        }
-      />
+      <AdminPageHeader title="Configuración" />
 
       <div className="px-6 sm:px-8 max-w-4xl mx-auto">
         <AdminTabs
@@ -110,11 +197,7 @@ export default function TiendaConfigPage() {
           tabs={[
             { id: "tienda", label: "Datos de la tienda" },
             { id: "envios-pagos", label: "Envíos y pagos" },
-            {
-              id: "usuarios",
-              label: "Usuarios del panel",
-              count: formData.usuariosPanel.length,
-            },
+            { id: "usuarios", label: "Usuarios del panel" },
           ]}
         />
 
@@ -123,144 +206,157 @@ export default function TiendaConfigPage() {
           {/* PESTAÑA 1: DATOS DE LA TIENDA                                  */}
           {/* ============================================================== */}
           {activeTab === "tienda" && (
-            <div className="bg-white rounded-lg border border-slate-200 p-6 space-y-6">
-              {/* Nombre y Logo */}
-              <div className="flex flex-col sm:flex-row sm:items-center gap-6 pb-6 border-b border-slate-100">
-                <div className="w-20 h-20 rounded-md bg-slate-100 border border-slate-200 overflow-hidden flex items-center justify-center shrink-0">
-                  {formData.logoUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={formData.logoUrl}
-                      alt={formData.nombre}
-                      className="w-full h-full object-contain bg-white"
-                    />
-                  ) : (
-                    <span className="text-sm font-semibold text-slate-500">HU</span>
-                  )}
+            <div className="space-y-6">
+              {/* Destacado: WhatsApp para recibir pedidos (G.2) */}
+              <div className="bg-white rounded-lg border border-slate-200 p-6 space-y-3">
+                <label className="block text-sm font-semibold text-slate-900">
+                  WhatsApp para recibir los pedidos *
+                </label>
+                <div className="flex items-stretch max-w-md">
+                  <span className="inline-flex items-center px-3.5 rounded-l-md border border-r-0 border-slate-300 bg-slate-100 text-sm font-medium text-slate-600 select-none">
+                    +54 9
+                  </span>
+                  <input
+                    type="tel"
+                    value={whatsappLocal}
+                    onChange={(e) => handleWhatsappChange(e.target.value)}
+                    placeholder="3442334343"
+                    className="flex-1 px-3.5 py-2 rounded-r-md border border-slate-300 text-sm text-slate-900 focus:border-[#0f172a] outline-none"
+                  />
                 </div>
-
-                <div className="space-y-2">
-                  <div className="text-sm font-medium text-slate-900">Logo de la tienda</div>
-                  <label className="inline-flex items-center gap-2 px-3 py-1.5 rounded-md border border-slate-300 bg-white hover:bg-slate-50 text-xs font-medium text-slate-700 cursor-pointer">
-                    <Upload className="w-3.5 h-3.5" />
-                    <span>Cambiar imagen</span>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      onChange={handleLogoFile}
-                      className="hidden"
-                    />
-                  </label>
-                </div>
+                {whatsappError ? (
+                  <p className="text-xs text-red-600">{whatsappError}</p>
+                ) : (
+                  <p className="text-xs text-slate-500">
+                    Ingresá código de área sin el 0 y el número sin el 15 (ej: 3442334343). Aquí
+                    llegan los pedidos de los clientes.
+                  </p>
+                )}
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1.5">
-                    Nombre de la tienda
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.nombre}
-                    onChange={(e) => setFormData({ ...formData, nombre: e.target.value })}
-                    className="w-full px-3.5 py-2 rounded-md border border-slate-300 text-sm text-slate-900 focus:border-[#0f172a] outline-none"
-                  />
+              {/* Datos generales del local */}
+              <div className="bg-white rounded-lg border border-slate-200 p-6 space-y-6">
+                <div className="flex flex-col sm:flex-row sm:items-center gap-6 pb-6 border-b border-slate-100">
+                  <div className="w-20 h-20 rounded-md bg-white border border-slate-200 overflow-hidden flex items-center justify-center shrink-0 p-1">
+                    {formData.logoUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={formData.logoUrl}
+                        alt={formData.nombre}
+                        className="max-w-full max-h-full object-contain"
+                      />
+                    ) : (
+                      <span className="text-sm font-semibold text-slate-500">HU</span>
+                    )}
+                  </div>
+
+                  <div className="space-y-2">
+                    <div className="text-sm font-medium text-slate-900">Logo de la tienda</div>
+                    <label className="inline-flex items-center gap-2 px-3.5 py-2 rounded-md border border-slate-300 bg-white hover:bg-slate-50 text-xs font-medium text-slate-700 cursor-pointer">
+                      <Upload className="w-3.5 h-3.5" />
+                      <span>Cambiar imagen</span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={handleLogoFile}
+                        className="hidden"
+                      />
+                    </label>
+                  </div>
                 </div>
 
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1.5">
-                    Correo electrónico de contacto
-                  </label>
-                  <input
-                    type="email"
-                    value={formData.email}
-                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                    className="w-full px-3.5 py-2 rounded-md border border-slate-300 text-sm text-slate-900 focus:border-[#0f172a] outline-none"
-                  />
-                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                      Nombre de la tienda
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.nombre}
+                      onChange={(e) => setFormData({ ...formData, nombre: e.target.value })}
+                      className="w-full px-3.5 py-2 rounded-md border border-slate-300 text-sm text-slate-900 focus:border-[#0f172a] outline-none"
+                    />
+                  </div>
 
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1.5">
-                    Teléfono visible
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.telefono}
-                    onChange={(e) => setFormData({ ...formData, telefono: e.target.value })}
-                    className="w-full px-3.5 py-2 rounded-md border border-slate-300 text-sm text-slate-900 focus:border-[#0f172a] outline-none"
-                  />
-                </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                      Correo electrónico de contacto
+                    </label>
+                    <input
+                      type="email"
+                      value={formData.email}
+                      onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                      className="w-full px-3.5 py-2 rounded-md border border-slate-300 text-sm text-slate-900 focus:border-[#0f172a] outline-none"
+                    />
+                  </div>
 
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1.5">
-                    WhatsApp para recibir pedidos
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.whatsapp}
-                    onChange={(e) => setFormData({ ...formData, whatsapp: e.target.value })}
-                    className="w-full px-3.5 py-2 rounded-md border border-slate-300 text-sm text-slate-900 focus:border-[#0f172a] outline-none"
-                  />
-                  <p className="text-xs text-slate-500 mt-1">
-                    Incluí código de país y área sin espacios (ej: 5493442334343).
-                  </p>
-                </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                      Teléfono visible
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.telefono}
+                      onChange={(e) => setFormData({ ...formData, telefono: e.target.value })}
+                      className="w-full px-3.5 py-2 rounded-md border border-slate-300 text-sm text-slate-900 focus:border-[#0f172a] outline-none"
+                    />
+                  </div>
 
-                <div className="sm:col-span-2">
-                  <label className="block text-sm font-medium text-slate-700 mb-1.5">
-                    Dirección del local
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.direccion}
-                    onChange={(e) => setFormData({ ...formData, direccion: e.target.value })}
-                    className="w-full px-3.5 py-2 rounded-md border border-slate-300 text-sm text-slate-900 focus:border-[#0f172a] outline-none"
-                  />
-                </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                      Dirección del local
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.direccion}
+                      onChange={(e) => setFormData({ ...formData, direccion: e.target.value })}
+                      className="w-full px-3.5 py-2 rounded-md border border-slate-300 text-sm text-slate-900 focus:border-[#0f172a] outline-none"
+                    />
+                  </div>
 
-                <div className="sm:col-span-2">
-                  <label className="block text-sm font-medium text-slate-700 mb-1.5">
-                    Horarios de atención
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.horarios}
-                    onChange={(e) => setFormData({ ...formData, horarios: e.target.value })}
-                    className="w-full px-3.5 py-2 rounded-md border border-slate-300 text-sm text-slate-900 focus:border-[#0f172a] outline-none"
-                  />
-                </div>
+                  <div className="sm:col-span-2">
+                    <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                      Horarios de atención
+                    </label>
+                    <AutoResizeTextarea
+                      rows={2}
+                      value={formData.horarios}
+                      onChange={(e) => setFormData({ ...formData, horarios: e.target.value })}
+                    />
+                  </div>
 
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1.5">
-                    Instagram
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.instagram}
-                    onChange={(e) => setFormData({ ...formData, instagram: e.target.value })}
-                    placeholder="https://instagram.com/higieneuruguay"
-                    className="w-full px-3.5 py-2 rounded-md border border-slate-300 text-sm text-slate-900 focus:border-[#0f172a] outline-none"
-                  />
-                </div>
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                      Instagram
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.instagram}
+                      onChange={(e) => setFormData({ ...formData, instagram: e.target.value })}
+                      placeholder="https://instagram.com/higieneuruguay"
+                      className="w-full px-3.5 py-2 rounded-md border border-slate-300 text-sm text-slate-900 focus:border-[#0f172a] outline-none"
+                    />
+                  </div>
 
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-1.5">
-                    Facebook
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.facebook}
-                    onChange={(e) => setFormData({ ...formData, facebook: e.target.value })}
-                    placeholder="https://facebook.com/higieneuruguay"
-                    className="w-full px-3.5 py-2 rounded-md border border-slate-300 text-sm text-slate-900 focus:border-[#0f172a] outline-none"
-                  />
+                  <div>
+                    <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                      Facebook
+                    </label>
+                    <input
+                      type="text"
+                      value={formData.facebook}
+                      onChange={(e) => setFormData({ ...formData, facebook: e.target.value })}
+                      placeholder="https://facebook.com/higieneuruguay"
+                      className="w-full px-3.5 py-2 rounded-md border border-slate-300 text-sm text-slate-900 focus:border-[#0f172a] outline-none"
+                    />
+                  </div>
                 </div>
               </div>
             </div>
           )}
 
           {/* ============================================================== */}
-          {/* PESTAÑA 2: ENVÍOS Y PAGOS                                      */}
+          {/* PESTAÑA 2: ENVÍOS Y PAGOS (G.3, G.4, G.5)                      */}
           {/* ============================================================== */}
           {activeTab === "envios-pagos" && (
             <div className="space-y-6">
@@ -274,140 +370,113 @@ export default function TiendaConfigPage() {
                   checked={formData.retiroLocalHabilitado}
                   onChange={(val) => setFormData({ ...formData, retiroLocalHabilitado: val })}
                   label="Retiro en el local"
-                  description="Permite que el cliente retire su compra sin costo en 14 de Julio 14."
+                  description={`Retiro sin costo en ${formData.direccion || "el local"}.`}
                 />
 
                 <div className="pt-3 border-t border-slate-100">
                   <AdminToggle
                     checked={formData.envioDomicilioHabilitado}
                     onChange={(val) => setFormData({ ...formData, envioDomicilioHabilitado: val })}
-                    label="Envío a domicilio en Concepción del Uruguay"
-                    description="Habilita el campo de dirección de entrega durante la compra."
+                    label="Envío a domicilio"
+                    description="Habilita el campo de dirección durante el pedido."
                   />
                 </div>
 
                 {formData.envioDomicilioHabilitado && (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 pt-2">
-                    <div>
-                      <label className="block text-sm font-medium text-slate-700 mb-1.5">
-                        Costo de envío estándar ($ ARS)
-                      </label>
-                      <input
-                        type="number"
-                        min={0}
-                        value={formData.costoEnvioBase}
-                        onChange={(e) =>
-                          setFormData({
-                            ...formData,
-                            costoEnvioBase: Number(e.target.value) || 0,
-                          })
-                        }
-                        className="w-full px-3.5 py-2 rounded-md border border-slate-300 text-sm text-slate-900 focus:border-[#0f172a] outline-none"
-                      />
+                  <div className="space-y-4 pt-2">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                          Costo de envío estándar ($ ARS)
+                        </label>
+                        <input
+                          type="number"
+                          min={0}
+                          value={formData.costoEnvioBase}
+                          onChange={(e) =>
+                            setFormData({
+                              ...formData,
+                              costoEnvioBase: Number(e.target.value) || 0,
+                            })
+                          }
+                          className="w-full px-3.5 py-2 rounded-md border border-slate-300 text-sm text-slate-900 focus:border-[#0f172a] outline-none"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                          Envío gratis desde ($ ARS)
+                        </label>
+                        <input
+                          type="number"
+                          min={0}
+                          step={500}
+                          value={formData.envioGratisDesde}
+                          onChange={(e) =>
+                            setFormData({
+                              ...formData,
+                              envioGratisDesde: Number(e.target.value) || 0,
+                            })
+                          }
+                          className="w-full px-3.5 py-2 rounded-md border border-slate-300 text-sm text-slate-900 focus:border-[#0f172a] outline-none"
+                        />
+                      </div>
                     </div>
 
-                    <div>
-                      <label className="block text-sm font-medium text-slate-700 mb-1.5">
-                        Aclaración visible sobre envíos
-                      </label>
-                      <input
-                        type="text"
-                        value={formData.aclaracionEnvio}
-                        onChange={(e) =>
-                          setFormData({ ...formData, aclaracionEnvio: e.target.value })
-                        }
-                        className="w-full px-3.5 py-2 rounded-md border border-slate-300 text-sm text-slate-900 focus:border-[#0f172a] outline-none"
-                      />
-                    </div>
+                    {formData.envioGratisDesde > 0 && (
+                      <div className="p-3 rounded-md bg-slate-50 border border-slate-200 text-xs text-slate-700">
+                        Mensaje automático en la tienda:{" "}
+                        <strong className="text-slate-900">
+                          &ldquo;Envío gratis en compras desde {money(formData.envioGratisDesde)}
+                          &rdquo;
+                        </strong>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
 
-              {/* Medios de pago */}
+              {/* Medios de pago informativos (G.5: sin datos bancarios ni CBU) */}
               <div className="bg-white rounded-lg border border-slate-200 p-6 space-y-5">
-                <h2 className="text-base font-semibold text-slate-900 pb-3 border-b border-slate-100">
-                  Medios de pago
-                </h2>
-
-                <AdminToggle
-                  checked={formData.pagoEfectivoHabilitado}
-                  onChange={(val) => setFormData({ ...formData, pagoEfectivoHabilitado: val })}
-                  label="Pago en efectivo"
-                  description="Disponible al retirar en el local o al recibir el pedido."
-                />
-
-                <div className="pt-3 border-t border-slate-100">
-                  <AdminToggle
-                    checked={formData.pagoTransferenciaHabilitado}
-                    onChange={(val) =>
-                      setFormData({ ...formData, pagoTransferenciaHabilitado: val })
-                    }
-                    label="Transferencia bancaria"
-                    description="Muestra los datos de cuenta bancaria al finalizar el pedido."
-                  />
+                <div className="pb-3 border-b border-slate-100">
+                  <h2 className="text-base font-semibold text-slate-900">
+                    Medios de pago aceptados
+                  </h2>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Se muestran en la tienda solo como información. El pago se coordina por
+                    WhatsApp.
+                  </p>
                 </div>
 
-                {formData.pagoTransferenciaHabilitado &&
-                  formData.cuentasBancarias.map((cuenta, idx) => (
-                    <div
-                      key={cuenta.id}
-                      className="p-4 rounded-md bg-slate-50 border border-slate-200 grid grid-cols-1 sm:grid-cols-2 gap-4"
-                    >
-                      <div>
-                        <label className="block text-xs font-medium text-slate-700 mb-1">
-                          Banco o entidad
-                        </label>
-                        <input
-                          type="text"
-                          value={cuenta.banco}
-                          onChange={(e) => handleBankChange(idx, "banco", e.target.value)}
-                          className="w-full px-3 py-1.5 rounded-md border border-slate-300 bg-white text-sm text-slate-900"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-xs font-medium text-slate-700 mb-1">
-                          Titular de la cuenta
-                        </label>
-                        <input
-                          type="text"
-                          value={cuenta.titular}
-                          onChange={(e) => handleBankChange(idx, "titular", e.target.value)}
-                          className="w-full px-3 py-1.5 rounded-md border border-slate-300 bg-white text-sm text-slate-900"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-xs font-medium text-slate-700 mb-1">
-                          Alias
-                        </label>
-                        <input
-                          type="text"
-                          value={cuenta.alias}
-                          onChange={(e) => handleBankChange(idx, "alias", e.target.value)}
-                          className="w-full px-3 py-1.5 rounded-md border border-slate-300 bg-white text-sm text-slate-900"
-                        />
-                      </div>
-
-                      <div>
-                        <label className="block text-xs font-medium text-slate-700 mb-1">
-                          CBU / CVU
-                        </label>
-                        <input
-                          type="text"
-                          value={cuenta.cbu}
-                          onChange={(e) => handleBankChange(idx, "cbu", e.target.value)}
-                          className="w-full px-3 py-1.5 rounded-md border border-slate-300 bg-white text-sm text-slate-900"
-                        />
-                      </div>
+                <div className="divide-y divide-slate-100">
+                  {formData.mediosPago.map((medio) => (
+                    <div key={medio.id} className="py-3 first:pt-0 last:pb-0">
+                      <AdminToggle
+                        checked={medio.habilitado}
+                        onChange={(val) => handleTogglePaymentMethod(medio.id, val)}
+                        label={medio.nombre}
+                      />
                     </div>
                   ))}
+                </div>
+
+                <div className="pt-3 border-t border-slate-100">
+                  <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                    Aclaración opcional para el cliente
+                  </label>
+                  <AutoResizeTextarea
+                    rows={2}
+                    value={formData.aclaracionPago}
+                    onChange={(e) => setFormData({ ...formData, aclaracionPago: e.target.value })}
+                    placeholder="Ej: Los datos de pago se envían por WhatsApp al confirmar el pedido."
+                  />
+                </div>
               </div>
             </div>
           )}
 
           {/* ============================================================== */}
-          {/* PESTAÑA 3: USUARIOS DEL PANEL                                  */}
+          {/* PESTAÑA 3: USUARIOS DEL PANEL (G.6)                            */}
           {/* ============================================================== */}
           {activeTab === "usuarios" && (
             <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
@@ -417,7 +486,7 @@ export default function TiendaConfigPage() {
                 </h2>
                 <button
                   type="button"
-                  onClick={() => setUserDrawerOpen(true)}
+                  onClick={openCreateUser}
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md border border-slate-300 bg-white hover:bg-slate-50 text-xs font-medium text-slate-700"
                 >
                   <Plus className="w-3.5 h-3.5" />
@@ -426,25 +495,53 @@ export default function TiendaConfigPage() {
               </div>
 
               <div className="divide-y divide-slate-100">
-                {formData.usuariosPanel.map((user) => (
-                  <div key={user.id} className="px-6 py-4 flex items-center justify-between gap-4">
-                    <div>
-                      <div className="text-sm font-medium text-slate-900">{user.nombre}</div>
-                      <div className="text-xs text-slate-500">
-                        {user.email} · {user.rol}
+                {formData.usuariosPanel.map((user) => {
+                  const isCurrent = user.id === currentUserId;
+                  return (
+                    <div
+                      key={user.id}
+                      className="px-6 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4"
+                    >
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-medium text-slate-900">{user.nombre}</span>
+                          {isCurrent && (
+                            <span className="text-xs px-2 py-0.5 rounded-md bg-slate-100 text-slate-600 border border-slate-200">
+                              Tu cuenta
+                            </span>
+                          )}
+                        </div>
+                        <div className="text-xs text-slate-500 mt-0.5">
+                          {user.email} · {user.rol}
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-4">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-slate-600">
+                            {user.activo ? "Activo" : "Inactivo"}
+                          </span>
+                          <AdminToggle
+                            checked={user.activo}
+                            onChange={() => handleToggleUserStatus(user)}
+                          />
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => openEditUser(user)}
+                          className="px-3 py-1.5 rounded-md border border-slate-200 hover:border-slate-300 bg-white text-xs font-medium text-slate-700"
+                        >
+                          Editar
+                        </button>
                       </div>
                     </div>
-                    <AdminToggle
-                      checked={user.activo}
-                      onChange={() => handleToggleUserStatus(user.id)}
-                    />
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           )}
 
-          {/* Barra fija inferior con Guardar cambios */}
+          {/* Barra fija inferior única con Guardar cambios */}
           <div className="fixed bottom-0 left-0 lg:left-60 right-0 bg-white border-t border-slate-200 px-6 sm:px-8 py-3.5 z-30">
             <div className="max-w-4xl mx-auto flex items-center justify-end">
               <button
@@ -459,13 +556,20 @@ export default function TiendaConfigPage() {
         </form>
       </div>
 
-      {/* Drawer para agregar usuario del panel */}
+      {/* Drawer para agregar o editar usuario del panel */}
       <AdminDrawer
         isOpen={userDrawerOpen}
         onClose={() => setUserDrawerOpen(false)}
-        title="Agregar usuario al panel"
+        title={editingUser ? "Editar usuario" : "Agregar usuario al panel"}
       >
-        <form onSubmit={handleAddUser} className="space-y-4">
+        <form onSubmit={handleSaveUser} className="space-y-4">
+          {!editingUser && (
+            <p className="text-xs text-slate-600 bg-slate-50 border border-slate-200 rounded-md p-3">
+              La persona recibirá un correo electrónico con un enlace para crear su contraseña e
+              ingresar al panel.
+            </p>
+          )}
+
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1.5">
               Nombre y apellido *
@@ -473,8 +577,8 @@ export default function TiendaConfigPage() {
             <input
               type="text"
               required
-              value={newUserName}
-              onChange={(e) => setNewUserName(e.target.value)}
+              value={userName}
+              onChange={(e) => setUserName(e.target.value)}
               className="w-full px-3.5 py-2 rounded-md border border-slate-300 text-sm text-slate-900"
             />
           </div>
@@ -486,8 +590,8 @@ export default function TiendaConfigPage() {
             <input
               type="email"
               required
-              value={newUserEmail}
-              onChange={(e) => setNewUserEmail(e.target.value)}
+              value={userEmail}
+              onChange={(e) => setUserEmail(e.target.value)}
               className="w-full px-3.5 py-2 rounded-md border border-slate-300 text-sm text-slate-900"
             />
           </div>
@@ -495,14 +599,36 @@ export default function TiendaConfigPage() {
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1.5">Rol</label>
             <select
-              value={newUserRol}
-              onChange={(e) => setNewUserRol(e.target.value as "Administrador" | "Operador")}
+              value={userRol}
+              onChange={(e) => setUserRol(e.target.value as "Administrador" | "Operador")}
               className="w-full px-3.5 py-2 rounded-md border border-slate-300 text-sm text-slate-900 bg-white"
             >
               <option value="Operador">Operador (Pedidos y catálogo)</option>
               <option value="Administrador">Administrador (Acceso total)</option>
             </select>
           </div>
+
+          {editingUser && (
+            <div className="pt-4 border-t border-slate-200 flex flex-wrap items-center justify-between gap-2">
+              <button
+                type="button"
+                onClick={() => handleResetPassword(editingUser)}
+                className="px-3 py-1.5 rounded-md border border-slate-300 bg-white hover:bg-slate-50 text-xs font-medium text-slate-700"
+              >
+                Restablecer contraseña
+              </button>
+
+              {canDeactivateOrDeleteUser(editingUser) && (
+                <button
+                  type="button"
+                  onClick={() => setConfirmDeleteUser(true)}
+                  className="px-3 py-1.5 rounded-md border border-red-200 text-red-700 hover:bg-red-50 text-xs font-medium"
+                >
+                  Eliminar usuario
+                </button>
+              )}
+            </div>
+          )}
 
           <div className="pt-4 border-t border-slate-200 flex items-center justify-end gap-3">
             <button
@@ -516,11 +642,19 @@ export default function TiendaConfigPage() {
               type="submit"
               className="px-4 py-2 rounded-md bg-[#06b6d4] hover:bg-[#0891b2] text-white text-sm font-medium"
             >
-              Agregar
+              {editingUser ? "Guardar" : "Agregar"}
             </button>
           </div>
         </form>
       </AdminDrawer>
+
+      <ConfirmDeleteModal
+        isOpen={confirmDeleteUser}
+        onClose={() => setConfirmDeleteUser(false)}
+        onConfirm={handleDeleteUser}
+        title="Eliminar usuario"
+        itemName={editingUser?.nombre || ""}
+      />
     </div>
   );
 }

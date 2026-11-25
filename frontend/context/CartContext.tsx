@@ -1,15 +1,15 @@
-'use client';
+"use client";
 
-import React, { createContext, useContext, useEffect, useState, useMemo, useCallback } from 'react';
-import { Product, CartItem } from '@/types';
+import React, { createContext, useContext, useEffect, useState, useMemo, useCallback } from "react";
+import { Product, CartItem } from "@/types";
 import {
   STORE,
   StorePromotionConfig,
   getStoredPromotionConfig,
   DEFAULT_PROMOTION_CONFIG,
-} from '@/frontend/utils/store';
+} from "@/frontend/utils/store";
 
-const CART_STORAGE_KEY = 'higiene_uruguay_cart';
+const CART_STORAGE_KEY = "higiene_uruguay_cart";
 
 export interface PromoProgressInfo {
   threshold: number;
@@ -76,17 +76,17 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       }
       refreshPromoConfig();
     } catch (e) {
-      console.error('Error cargando carrito desde localStorage', e);
+      console.error("Error cargando carrito desde localStorage", e);
     } finally {
       setIsLoaded(true);
     }
 
     const handlePromoUpdate = () => refreshPromoConfig();
-    window.addEventListener('promo-config-updated', handlePromoUpdate);
-    window.addEventListener('storage', handlePromoUpdate);
+    window.addEventListener("promo-config-updated", handlePromoUpdate);
+    window.addEventListener("storage", handlePromoUpdate);
     return () => {
-      window.removeEventListener('promo-config-updated', handlePromoUpdate);
-      window.removeEventListener('storage', handlePromoUpdate);
+      window.removeEventListener("promo-config-updated", handlePromoUpdate);
+      window.removeEventListener("storage", handlePromoUpdate);
     };
   }, [refreshPromoConfig]);
 
@@ -96,7 +96,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     try {
       localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(items));
     } catch (e) {
-      console.error('Error guardando carrito en localStorage', e);
+      console.error("Error guardando carrito en localStorage", e);
     }
   }, [items, isLoaded]);
 
@@ -112,57 +112,54 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
   // Agregar producto al carrito:
   // IMPORTANTE: NO abre la barra lateral, sino que abre el mini cuadro flotante bajo el carrito
-  const addItem = useCallback(
-    (product: Product, quantity: number = 1, customUnit?: string) => {
-      const unit =
-        customUnit ||
-        product.bulkPresentation ||
-        product.bulkUnit ||
-        (product.isBulk ? 'Presentación fijada' : 'Unidad');
+  const addItem = useCallback((product: Product, quantity: number = 1, customUnit?: string) => {
+    const unit =
+      customUnit ||
+      product.bulkPresentation ||
+      product.bulkUnit ||
+      (product.isBulk ? "Presentación fijada" : "Unidad");
 
-      const unitPrice = product.price;
+    const unitPrice = product.price;
 
-      let addedCartItem: CartItem = {
-        product,
-        quantity,
-        selectedUnit: unit,
-        price: unitPrice,
-        totalPrice: unitPrice * quantity,
-      };
+    let addedCartItem: CartItem = {
+      product,
+      quantity,
+      selectedUnit: unit,
+      price: unitPrice,
+      totalPrice: unitPrice * quantity,
+    };
 
-      setItems((prevItems) => {
-        const existingIndex = prevItems.findIndex(
-          (item) => item.product.id === product.id && item.selectedUnit === unit
-        );
+    setItems((prevItems) => {
+      const existingIndex = prevItems.findIndex(
+        (item) => item.product.id === product.id && item.selectedUnit === unit,
+      );
 
-        if (existingIndex > -1) {
-          const updated = [...prevItems];
-          const current = updated[existingIndex];
-          const newQty = current.quantity + quantity;
-          const updatedItem = {
-            ...current,
-            quantity: newQty,
-            totalPrice: newQty * current.price,
-          };
-          updated[existingIndex] = updatedItem;
-          addedCartItem = updatedItem;
-          return updated;
-        }
+      if (existingIndex > -1) {
+        const updated = [...prevItems];
+        const current = updated[existingIndex];
+        const newQty = current.quantity + quantity;
+        const updatedItem = {
+          ...current,
+          quantity: newQty,
+          totalPrice: newQty * current.price,
+        };
+        updated[existingIndex] = updatedItem;
+        addedCartItem = updatedItem;
+        return updated;
+      }
 
-        return [...prevItems, addedCartItem];
-      });
+      return [...prevItems, addedCartItem];
+    });
 
-      // Mostrar el pequeño cuadrito debajo del carrito (en lugar de abrir el drawer lateral)
-      setLastAddedItem(addedCartItem);
-      setIsMiniPopupOpen(true);
+    // Mostrar el pequeño cuadrito debajo del carrito (en lugar de abrir el drawer lateral)
+    setLastAddedItem(addedCartItem);
+    setIsMiniPopupOpen(true);
 
-      // Auto-ocultar el mini popup a los 4 segundos
-      setTimeout(() => {
-        setIsMiniPopupOpen(false);
-      }, 4000);
-    },
-    []
-  );
+    // Auto-ocultar el mini popup a los 4 segundos
+    setTimeout(() => {
+      setIsMiniPopupOpen(false);
+    }, 4000);
+  }, []);
 
   // Quitar producto del carrito
   const removeItem = useCallback((productId: string, selectedUnit?: string) => {
@@ -171,7 +168,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
         if (item.product.id !== productId) return true;
         if (selectedUnit && item.selectedUnit !== selectedUnit) return true;
         return false;
-      })
+      }),
     );
   }, []);
 
@@ -195,10 +192,10 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
             quantity,
             totalPrice: quantity * item.price,
           };
-        })
+        }),
       );
     },
-    [removeItem]
+    [removeItem],
   );
 
   // Vaciar carrito
@@ -207,28 +204,35 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   // Cálculos derivados
-  const totalItems = useMemo(
-    () => items.reduce((sum, item) => sum + item.quantity, 0),
-    [items]
-  );
+  const totalItems = useMemo(() => items.reduce((sum, item) => sum + item.quantity, 0), [items]);
 
-  const subtotal = useMemo(
-    () => items.reduce((sum, item) => sum + item.totalPrice, 0),
-    [items]
-  );
+  const subtotal = useMemo(() => items.reduce((sum, item) => sum + item.totalPrice, 0), [items]);
 
   const hasInquiryItems = useMemo(
     () => items.some((item) => item.product.requiresStockInquiry || item.product.isBulk),
-    [items]
+    [items],
   );
 
-  // Progreso de la promoción configurada por el admin
+  // Progreso de la promoción configurada por el admin (Opción A por defecto: no acumula sobre ítems con descuento propio)
   const promoProgress: PromoProgressInfo = useMemo(() => {
     const threshold = promoConfig.thresholdAmount || 25000;
     const remaining = Math.max(0, threshold - subtotal);
     const percentage = Math.min(100, Math.round((subtotal / threshold) * 100));
     const isReached = promoConfig.isActive && subtotal >= threshold;
-    const discountAmount = isReached ? Math.round(subtotal * (promoConfig.discountPercent / 100)) : 0;
+
+    const stackable = Boolean(promoConfig.stackWithProductDiscounts);
+    const eligibleSubtotal = stackable
+      ? subtotal
+      : items.reduce((sum, item) => {
+          const hasProductDiscount = Boolean(
+            item.product.originalPrice && item.product.originalPrice > item.price,
+          );
+          return hasProductDiscount ? sum : sum + item.totalPrice;
+        }, 0);
+
+    const discountAmount = isReached
+      ? Math.round(eligibleSubtotal * (promoConfig.discountPercent / 100))
+      : 0;
 
     return {
       threshold,
@@ -241,11 +245,11 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       bannerText: promoConfig.bannerText,
       isActive: promoConfig.isActive,
     };
-  }, [subtotal, promoConfig]);
+  }, [subtotal, items, promoConfig]);
 
   const discountedSubtotal = useMemo(
     () => Math.max(0, subtotal - promoProgress.discountAmount),
-    [subtotal, promoProgress.discountAmount]
+    [subtotal, promoProgress.discountAmount],
   );
 
   const value = useMemo(
@@ -292,7 +296,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
       updateQuantity,
       clearCart,
       refreshPromoConfig,
-    ]
+    ],
   );
 
   return <CartContext.Provider value={value}>{children}</CartContext.Provider>;
@@ -301,7 +305,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 export function useCart() {
   const context = useContext(CartContext);
   if (!context) {
-    throw new Error('useCart debe ser utilizado dentro de un CartProvider');
+    throw new Error("useCart debe ser utilizado dentro de un CartProvider");
   }
   return context;
 }

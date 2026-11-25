@@ -16,6 +16,8 @@ export type Product = {
   originalPrice?: number;
   compareAtPrice?: number;
   categoryId: string;
+  categoryName?: string;
+  categorySlug?: string;
   images: string[];
   inStock: boolean;
   badges: string[];
@@ -79,17 +81,20 @@ export type CartItem = {
 };
 
 export type CheckoutFormData = {
+  orderNumber?: string;
   customerName: string;
   phone: string;
-  deliveryType: 'PICKUP' | 'BUYER_SHIPPING' | 'DELIVERY';
+  deliveryType: "PICKUP" | "BUYER_SHIPPING" | "DELIVERY";
   pickupTimeSlot?: string;
   address?: string;
   cornerStreet?: string;
   city?: string;
   notes?: string;
-  paymentMethod: 'TRANSFERENCIA' | 'EFECTIVO';
+  bulkPreference?: "Consultar reemplazo" | "Quitar del pedido";
+  paymentMethod: "TRANSFERENCIA" | "EFECTIVO";
   couponCode?: string;
   couponDiscount?: number;
+  productDiscountTotal?: number;
   spendDiscount?: number;
   finalTotal?: number;
 };

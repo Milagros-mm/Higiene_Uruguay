@@ -3,7 +3,7 @@
 import React, { useState, Suspense } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Search, Package, Plus, Upload, X } from "lucide-react";
+import { Search, Plus, Upload, X, ChevronLeft, ChevronRight } from "lucide-react";
 import {
   useAdminCatalog,
   AdminPageHeader,
@@ -12,6 +12,10 @@ import {
   AdminToggle,
   StatusBadge,
   ConfirmDeleteModal,
+  ProductThumbnail,
+  formatDateAR,
+  getDiscountStatus,
+  getProductActiveDiscount,
   AdminRubro,
   AdminSubrubro,
   AdminMarca,
@@ -25,6 +29,39 @@ import {
 } from "@/frontend/utils/store";
 
 type ProductTabId = "productos" | "rubros" | "marcas" | "descuentos";
+type QuickProductFilter = "TODOS" | "SIN_STOCK" | "SIN_FOTO" | "OCULTOS" | "SUELTOS";
+
+const ITEMS_PER_PAGE = 10;
+
+function DiscountStatusBadge({ discount }: { discount: AdminDiscount }) {
+  const status = getDiscountStatus(discount);
+  if (status === "Vigente") {
+    return (
+      <span className="inline-flex px-2 py-0.5 rounded-md text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
+        Vigente
+      </span>
+    );
+  }
+  if (status === "Programado") {
+    return (
+      <span className="inline-flex px-2 py-0.5 rounded-md text-xs font-medium bg-blue-50 text-blue-800 border border-blue-200">
+        Programado
+      </span>
+    );
+  }
+  if (status === "Vencido") {
+    return (
+      <span className="inline-flex px-2 py-0.5 rounded-md text-xs font-medium bg-slate-100 text-slate-600 border border-slate-200">
+        Vencido
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex px-2 py-0.5 rounded-md text-xs font-medium bg-slate-100 text-slate-600 border border-slate-200">
+      Oculto
+    </span>
+  );
+}
 
 function ProductosCatalogContent() {
   const router = useRouter();
@@ -50,11 +87,13 @@ function ProductosCatalogContent() {
 
   const [activeTab, setActiveTab] = useState<ProductTabId>(initialTab);
 
-  // --- Estado Pestaña 1: Productos ---
+  // --- Pestaña 1: Productos ---
   const [productQuery, setProductQuery] = useState("");
   const [productRubroFilter, setProductRubroFilter] = useState("TODOS");
+  const [quickFilter, setQuickFilter] = useState<QuickProductFilter>("TODOS");
+  const [currentPage, setCurrentPage] = useState(1);
 
-  // --- Estado Pestaña 2: Rubros y Subrubros ---
+  // --- Pestaña 2: Rubros y Subrubros ---
   const [rubroDrawerOpen, setRubroDrawerOpen] = useState(false);
   const [editingRubro, setEditingRubro] = useState<AdminRubro | null>(null);
   const [rubroNombre, setRubroNombre] = useState("");
@@ -70,7 +109,7 @@ function ProductosCatalogContent() {
   const [savingSubrubro, setSavingSubrubro] = useState(false);
   const [confirmDeleteSubrubro, setConfirmDeleteSubrubro] = useState(false);
 
-  // --- Estado Pestaña 3: Marcas ---
+  // --- Pestaña 3: Marcas ---
   const [marcaDrawerOpen, setMarcaDrawerOpen] = useState(false);
   const [editingMarca, setEditingMarca] = useState<AdminMarca | null>(null);
   const [marcaNombre, setMarcaNombre] = useState("");
@@ -78,7 +117,7 @@ function ProductosCatalogContent() {
   const [savingMarca, setSavingMarca] = useState(false);
   const [confirmDeleteMarca, setConfirmDeleteMarca] = useState(false);
 
-  // --- Estado Pestaña 4: Descuentos + Promoción Carrito ---
+  // --- Pestaña 4: Descuentos + Promoción Carrito ---
   const [promoConfig, setPromoConfig] = useState<StorePromotionConfig>(() =>
     getStoredPromotionConfig(),
   );
@@ -87,12 +126,12 @@ function ProductosCatalogContent() {
   const [descuentoDrawerOpen, setDescuentoDrawerOpen] = useState(false);
   const [editingDescuento, setEditingDescuento] = useState<AdminDiscount | null>(null);
   const [descNombre, setDescNombre] = useState("");
-  const [descAplicaA, setDescAplicaA] = useState<"PRODUCTO" | "RUBRO">("RUBRO");
+  const [descAplicaA, setDescAplicaA] = useState<"" | "PRODUCTO" | "RUBRO">("");
   const [descTargetId, setDescTargetId] = useState("");
-  const [descTipo, setDescTipo] = useState<"PORCENTAJE" | "PRECIO_FIJO">("PORCENTAJE");
-  const [descValor, setDescValor] = useState<number>(10);
-  const [descInicio, setDescInicio] = useState("2026-11-01");
-  const [descFin, setDescFin] = useState("2026-12-31");
+  const [descTipo, setDescTipo] = useState<"" | "PORCENTAJE" | "PRECIO_FIJO">("");
+  const [descValor, setDescValor] = useState<string>("");
+  const [descInicio, setDescInicio] = useState("");
+  const [descFin, setDescFin] = useState("");
   const [descActivo, setDescActivo] = useState(true);
   const [savingDescuento, setSavingDescuento] = useState(false);
   const [confirmDeleteDescuento, setConfirmDeleteDescuento] = useState(false);
@@ -212,17 +251,17 @@ function ProductosCatalogContent() {
   };
 
   // ==========================================================================
-  // Handlers de Descuentos y Promoción del Carrito
+  // Handlers de Descuentos (D.10: campos vacíos al crear)
   // ==========================================================================
   const openCreateDescuento = () => {
     setEditingDescuento(null);
     setDescNombre("");
-    setDescAplicaA("RUBRO");
-    setDescTargetId(rubros[0]?.id || "");
-    setDescTipo("PORCENTAJE");
-    setDescValor(10);
-    setDescInicio("2026-11-01");
-    setDescFin("2026-12-31");
+    setDescAplicaA("");
+    setDescTargetId("");
+    setDescTipo("");
+    setDescValor("");
+    setDescInicio("");
+    setDescFin("");
     setDescActivo(true);
     setDescuentoDrawerOpen(true);
   };
@@ -233,7 +272,7 @@ function ProductosCatalogContent() {
     setDescAplicaA(d.aplicaA);
     setDescTargetId(d.targetId);
     setDescTipo(d.tipo);
-    setDescValor(d.valor);
+    setDescValor(String(d.valor));
     setDescInicio(d.fechaInicio);
     setDescFin(d.fechaFin);
     setDescActivo(d.activo);
@@ -242,7 +281,7 @@ function ProductosCatalogContent() {
 
   const handleSaveDescuentoForm = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!descNombre.trim() || !descTargetId) return;
+    if (!descNombre.trim() || !descAplicaA || !descTargetId || !descTipo || !descValor) return;
     setSavingDescuento(true);
     try {
       await saveDescuento({
@@ -273,25 +312,44 @@ function ProductosCatalogContent() {
   };
 
   // ==========================================================================
-  // Filtrado de Productos y Utilidades
+  // Filtrado, Paginación y Conteos de Seguridad
   // ==========================================================================
   const filteredProducts = productos.filter((p) => {
     const q = productQuery.toLowerCase().trim();
     const matchesSearch =
       !q || p.nombre.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q);
     const matchesRubro = productRubroFilter === "TODOS" || p.rubroId === productRubroFilter;
-    return matchesSearch && matchesRubro;
+
+    let matchesQuick = true;
+    if (quickFilter === "SIN_STOCK") matchesQuick = !p.esSuelto && p.stock <= 0;
+    else if (quickFilter === "SIN_FOTO") matchesQuick = !p.imagenes || p.imagenes.length === 0;
+    else if (quickFilter === "OCULTOS") matchesQuick = !p.activo;
+    else if (quickFilter === "SUELTOS") matchesQuick = p.esSuelto;
+
+    return matchesSearch && matchesRubro && matchesQuick;
   });
 
-  const getRubroName = (id: string) => rubros.find((r) => r.id === id)?.nombre || "Sin rubro";
+  const totalPages = Math.max(1, Math.ceil(filteredProducts.length / ITEMS_PER_PAGE));
+  const safePage = Math.min(currentPage, totalPages);
+  const paginatedProducts = filteredProducts.slice(
+    (safePage - 1) * ITEMS_PER_PAGE,
+    safePage * ITEMS_PER_PAGE,
+  );
 
+  const getRubroName = (id: string) => rubros.find((r) => r.id === id)?.nombre || "Sin rubro";
   const countProductsByRubro = (rubroId: string) =>
     productos.filter((p) => p.rubroId === rubroId).length;
-
   const countProductsBySubrubro = (subId: string) =>
     productos.filter((p) => p.subrubroId === subId).length;
+  const countProductsByMarca = (marcaId: string) =>
+    productos.filter((p) => p.marcaId === marcaId).length;
 
-  // Botón principal contextual de la pantalla
+  const editingRubroProductsCount = editingRubro ? countProductsByRubro(editingRubro.id) : 0;
+  const editingSubrubroProductsCount = editingSubrubro
+    ? countProductsBySubrubro(editingSubrubro.id)
+    : 0;
+  const editingMarcaProductsCount = editingMarca ? countProductsByMarca(editingMarca.id) : 0;
+
   const headerAction = () => {
     if (activeTab === "productos") {
       return (
@@ -349,10 +407,10 @@ function ProductosCatalogContent() {
           activeTab={activeTab}
           onChange={(id) => setActiveTab(id as ProductTabId)}
           tabs={[
-            { id: "productos", label: "Productos", count: productos.length },
-            { id: "rubros", label: "Rubros y subrubros", count: rubros.length },
-            { id: "marcas", label: "Marcas", count: marcas.length },
-            { id: "descuentos", label: "Descuentos", count: descuentos.length },
+            { id: "productos", label: "Productos" },
+            { id: "rubros", label: "Rubros y subrubros" },
+            { id: "marcas", label: "Marcas" },
+            { id: "descuentos", label: "Descuentos" },
           ]}
         />
 
@@ -361,142 +419,225 @@ function ProductosCatalogContent() {
         {/* ================================================================ */}
         {activeTab === "productos" && (
           <div className="space-y-4">
-            {/* Buscador y filtro por rubro */}
-            <div className="bg-white p-4 rounded-lg border border-slate-200 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
-              <div className="relative flex-1 max-w-md">
-                <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                <input
-                  type="text"
-                  value={productQuery}
-                  onChange={(e) => setProductQuery(e.target.value)}
-                  placeholder="Buscar por nombre o código..."
-                  className="w-full pl-9 pr-3.5 py-2 bg-white border border-slate-300 rounded-md text-sm text-slate-900 placeholder:text-slate-400 focus:border-[#0f172a] outline-none"
-                />
+            {/* Buscador, filtro de rubro y filtros rápidos */}
+            <div className="bg-white p-4 rounded-lg border border-slate-200 space-y-3">
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+                <div className="relative flex-1 max-w-md">
+                  <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    value={productQuery}
+                    onChange={(e) => {
+                      setProductQuery(e.target.value);
+                      setCurrentPage(1);
+                    }}
+                    placeholder="Buscar por nombre o código..."
+                    className="w-full pl-9 pr-3.5 py-2 bg-white border border-slate-300 rounded-md text-sm text-slate-900 placeholder:text-slate-400 focus:border-[#0f172a] outline-none"
+                  />
+                </div>
+
+                <select
+                  value={productRubroFilter}
+                  onChange={(e) => {
+                    setProductRubroFilter(e.target.value);
+                    setCurrentPage(1);
+                  }}
+                  aria-label="Filtrar por rubro"
+                  className="px-3.5 py-2 bg-white border border-slate-300 rounded-md text-sm text-slate-700 focus:border-[#0f172a] outline-none"
+                >
+                  <option value="TODOS">Todos los rubros</option>
+                  {rubros.map((r) => (
+                    <option key={r.id} value={r.id}>
+                      {r.nombre}
+                    </option>
+                  ))}
+                </select>
               </div>
 
-              <select
-                value={productRubroFilter}
-                onChange={(e) => setProductRubroFilter(e.target.value)}
-                aria-label="Filtrar por rubro"
-                className="px-3.5 py-2 bg-white border border-slate-300 rounded-md text-sm text-slate-700 focus:border-[#0f172a] outline-none"
-              >
-                <option value="TODOS">Todos los rubros</option>
-                {rubros.map((r) => (
-                  <option key={r.id} value={r.id}>
-                    {r.nombre}
-                  </option>
+              {/* Filtros rápidos */}
+              <div className="flex flex-wrap items-center gap-2 pt-1">
+                {(
+                  [
+                    { id: "TODOS", label: "Todos" },
+                    { id: "SIN_STOCK", label: "Sin stock" },
+                    { id: "SIN_FOTO", label: "Sin foto" },
+                    { id: "OCULTOS", label: "Ocultos" },
+                    { id: "SUELTOS", label: "Sueltos" },
+                  ] as const
+                ).map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => {
+                      setQuickFilter(item.id);
+                      setCurrentPage(1);
+                    }}
+                    className={`px-3 py-1 rounded-md text-xs font-medium border transition-colors ${
+                      quickFilter === item.id
+                        ? "bg-[#0f172a] text-white border-[#0f172a]"
+                        : "bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100"
+                    }`}
+                  >
+                    {item.label}
+                  </button>
                 ))}
-              </select>
+              </div>
             </div>
 
             {/* Tabla de productos */}
             <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
-              {filteredProducts.length > 0 ? (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left text-sm border-collapse">
-                    <thead>
-                      <tr className="bg-slate-50 border-b border-slate-200 text-xs font-semibold text-slate-600">
-                        <th className="py-3 px-4 w-16">Foto</th>
-                        <th className="py-3 px-4">Producto</th>
-                        <th className="py-3 px-4">Rubro</th>
-                        <th className="py-3 px-4">Precio</th>
-                        <th className="py-3 px-4">Stock</th>
-                        <th className="py-3 px-4 text-right">Acción</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {filteredProducts.map((prod) => {
-                        const sinStock = !prod.esSuelto && prod.controlarStock && prod.stock <= 0;
+              {paginatedProducts.length > 0 ? (
+                <>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-sm border-collapse">
+                      <thead>
+                        <tr className="bg-slate-50 border-b border-slate-200 text-xs font-semibold text-slate-600">
+                          <th className="py-3 px-4 w-16">Foto</th>
+                          <th className="py-3 px-4">Producto</th>
+                          <th className="py-3 px-4">Rubro</th>
+                          <th className="py-3 px-4">Precio</th>
+                          <th className="py-3 px-4">Stock</th>
+                          <th className="py-3 px-4 text-right">Acción</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {paginatedProducts.map((prod) => {
+                          const sinStock = !prod.esSuelto && prod.stock <= 0;
+                          const stockBajo = !prod.esSuelto && prod.stock > 0 && prod.stock <= 5;
+                          const activeDisc = getProductActiveDiscount(prod, descuentos);
 
-                        return (
-                          <tr
-                            key={prod.id}
-                            onClick={() => router.push(`/admin/productos/${prod.id}`)}
-                            className="hover:bg-slate-50 cursor-pointer transition-colors"
-                          >
-                            <td className="py-3 px-4">
-                              <div className="w-11 h-11 rounded-md bg-slate-100 border border-slate-200 overflow-hidden flex items-center justify-center shrink-0">
-                                {prod.imagenes[0] ? (
-                                  // eslint-disable-next-line @next/next/no-img-element
-                                  <img
-                                    src={prod.imagenes[0]}
-                                    alt={prod.nombre}
-                                    className="w-full h-full object-cover"
-                                  />
-                                ) : (
-                                  <Package className="w-4 h-4 text-slate-400" />
-                                )}
-                              </div>
-                            </td>
-                            <td className="py-3 px-4">
-                              <div className="flex items-center gap-2">
-                                <span className="font-medium text-slate-900">{prod.nombre}</span>
-                                <StatusBadge active={prod.activo} />
-                              </div>
-                              <div className="text-xs text-slate-500 mt-0.5">
-                                Código: {prod.sku}
-                              </div>
-                            </td>
-                            <td className="py-3 px-4">
-                              {prod.rubroId ? (
-                                <span className="text-slate-700">{getRubroName(prod.rubroId)}</span>
-                              ) : (
-                                <span className="inline-flex px-2 py-0.5 rounded-md text-xs font-medium bg-amber-50 text-amber-800 border border-amber-200">
-                                  Sin rubro
-                                </span>
-                              )}
-                            </td>
-                            <td className="py-3 px-4">
-                              {prod.precioOferta ? (
-                                <div>
-                                  <span className="font-semibold text-slate-900">
-                                    {money(prod.precioOferta)}
+                          return (
+                            <tr
+                              key={prod.id}
+                              onClick={() => router.push(`/admin/productos/${prod.id}`)}
+                              className="hover:bg-slate-50 cursor-pointer transition-colors"
+                            >
+                              <td className="py-3 px-4">
+                                <ProductThumbnail src={prod.imagenes[0]} alt={prod.nombre} />
+                              </td>
+                              <td className="py-3 px-4">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <span className="font-medium text-slate-900">{prod.nombre}</span>
+                                  <StatusBadge active={prod.activo} />
+                                  {!prod.sincronizado && (
+                                    <span className="inline-flex px-2 py-0.5 rounded-md text-xs font-medium bg-slate-100 text-slate-700 border border-slate-200">
+                                      Solo en la tienda
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="text-xs text-slate-500 mt-0.5">
+                                  {prod.sincronizado
+                                    ? `Código: ${prod.sku}`
+                                    : prod.presentacion || "Creado en tienda"}
+                                </div>
+                              </td>
+                              <td className="py-3 px-4">
+                                {prod.rubroId ? (
+                                  <span className="text-slate-700">
+                                    {getRubroName(prod.rubroId)}
                                   </span>
-                                  <span className="text-xs text-slate-400 line-through ml-1.5">
+                                ) : (
+                                  <span className="inline-flex px-2 py-0.5 rounded-md text-xs font-medium bg-amber-50 text-amber-800 border border-amber-200">
+                                    Sin rubro
+                                  </span>
+                                )}
+                              </td>
+                              <td className="py-3 px-4">
+                                {prod.precioSistema <= 0 ? (
+                                  <span className="inline-flex px-2 py-0.5 rounded-md text-xs font-medium bg-amber-50 text-amber-800 border border-amber-200">
+                                    Sin precio
+                                  </span>
+                                ) : activeDisc ? (
+                                  <div>
+                                    <span className="font-semibold text-slate-900">
+                                      {money(activeDisc.finalPrice)}
+                                    </span>
+                                    <span className="text-xs text-slate-400 line-through ml-1.5">
+                                      {money(prod.precioSistema)}
+                                    </span>
+                                  </div>
+                                ) : (
+                                  <span className="font-medium text-slate-900">
                                     {money(prod.precioSistema)}
                                   </span>
-                                </div>
-                              ) : (
-                                <span className="font-medium text-slate-900">
-                                  {money(prod.precioSistema)}
-                                </span>
-                              )}
-                            </td>
-                            <td className="py-3 px-4">
-                              {prod.esSuelto ? (
-                                <span className="text-xs text-slate-600">Venta suelta</span>
-                              ) : sinStock ? (
-                                <span className="inline-flex px-2 py-0.5 rounded-md text-xs font-medium bg-red-50 text-red-700 border border-red-200">
-                                  Sin stock
-                                </span>
-                              ) : (
-                                <span className="text-slate-800">{prod.stock}</span>
-                              )}
-                            </td>
-                            <td
-                              className="py-3 px-4 text-right"
-                              onClick={(e) => e.stopPropagation()}
-                            >
-                              <Link
-                                href={`/admin/productos/${prod.id}`}
-                                className="px-3 py-1.5 rounded-md border border-slate-200 hover:border-slate-300 bg-white text-xs font-medium text-slate-700 hover:text-slate-900"
+                                )}
+                              </td>
+                              <td className="py-3 px-4">
+                                {prod.esSuelto ? (
+                                  <span className="inline-flex px-2 py-0.5 rounded-md text-xs font-medium bg-slate-100 text-slate-700 border border-slate-200">
+                                    Suelto
+                                  </span>
+                                ) : sinStock ? (
+                                  <span className="inline-flex px-2 py-0.5 rounded-md text-xs font-medium bg-red-50 text-red-700 border border-red-200">
+                                    Sin stock
+                                  </span>
+                                ) : stockBajo ? (
+                                  <span className="inline-flex px-2 py-0.5 rounded-md text-xs font-medium bg-amber-50 text-amber-800 border border-amber-200">
+                                    {prod.stock} (bajo)
+                                  </span>
+                                ) : (
+                                  <span className="text-slate-800">{prod.stock}</span>
+                                )}
+                              </td>
+                              <td
+                                className="py-3 px-4 text-right"
+                                onClick={(e) => e.stopPropagation()}
                               >
-                                Editar
-                              </Link>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
+                                <Link
+                                  href={`/admin/productos/${prod.id}`}
+                                  className="px-3 py-1.5 rounded-md border border-slate-200 hover:border-slate-300 bg-white text-xs font-medium text-slate-700 hover:text-slate-900"
+                                >
+                                  Editar
+                                </Link>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* Paginación */}
+                  {totalPages > 1 && (
+                    <div className="px-4 py-3 border-t border-slate-200 flex items-center justify-between text-xs text-slate-600">
+                      <span>
+                        Mostrando {(safePage - 1) * ITEMS_PER_PAGE + 1}–
+                        {Math.min(safePage * ITEMS_PER_PAGE, filteredProducts.length)} de{" "}
+                        {filteredProducts.length}
+                      </span>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          disabled={safePage <= 1}
+                          onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                          className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-md border border-slate-200 bg-white hover:bg-slate-50 disabled:opacity-40"
+                        >
+                          <ChevronLeft className="w-3.5 h-3.5" />
+                          <span>Anterior</span>
+                        </button>
+                        <span className="font-medium text-slate-800">
+                          {safePage} / {totalPages}
+                        </span>
+                        <button
+                          type="button"
+                          disabled={safePage >= totalPages}
+                          onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                          className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-md border border-slate-200 bg-white hover:bg-slate-50 disabled:opacity-40"
+                        >
+                          <span>Siguiente</span>
+                          <ChevronRight className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </>
               ) : (
                 <div className="p-12 text-center">
                   <p className="text-sm font-medium text-slate-900">
-                    No se encontraron productos con esa búsqueda
+                    No se encontraron productos con ese criterio
                   </p>
                   <p className="text-xs text-slate-500 mt-1">
-                    Probá buscando con otro nombre o código.
+                    Probá quitando los filtros o buscando con otro nombre o código.
                   </p>
                 </div>
               )}
@@ -505,82 +646,87 @@ function ProductosCatalogContent() {
         )}
 
         {/* ================================================================ */}
-        {/* PESTAÑA 2: RUBROS Y SUBRUBROS                                    */}
+        {/* PESTAÑA 2: RUBROS Y SUBRUBROS (D.8)                              */}
         {/* ================================================================ */}
         {activeTab === "rubros" && (
-          <div className="space-y-4">
-            <div className="bg-white rounded-lg border border-slate-200 divide-y divide-slate-200">
-              {rubros.map((rubro) => {
-                const hijos = subrubros.filter((s) => s.rubroId === rubro.id);
-                const cantProd = countProductsByRubro(rubro.id);
+          <div className="bg-white rounded-lg border border-slate-200 divide-y divide-slate-200">
+            {rubros.map((rubro) => {
+              const hijos = subrubros.filter((s) => s.rubroId === rubro.id);
+              const cantProd = countProductsByRubro(rubro.id);
 
-                return (
-                  <div key={rubro.id} className="p-5 space-y-3">
-                    {/* Fila del Rubro */}
-                    <div className="flex items-center justify-between gap-4">
-                      <div className="flex items-center gap-3 min-w-0">
-                        <span className="text-base font-semibold text-slate-900">
-                          {rubro.nombre}
-                        </span>
+              return (
+                <div key={rubro.id} className="p-5 space-y-3">
+                  <div className="flex items-center justify-between gap-4">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <span className="text-base font-semibold text-slate-900">{rubro.nombre}</span>
+                      {cantProd > 0 && (
                         <span className="text-xs text-slate-500">
                           ({cantProd} {cantProd === 1 ? "producto" : "productos"})
                         </span>
-                        <StatusBadge active={rubro.activo} />
-                      </div>
-
-                      <div className="flex items-center gap-2 shrink-0">
-                        <button
-                          type="button"
-                          onClick={() => openCreateSubrubro(rubro.id)}
-                          className="px-2.5 py-1.5 rounded-md text-xs font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-colors"
-                        >
-                          + Agregar subrubro
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => openEditRubro(rubro)}
-                          className="px-3 py-1.5 rounded-md border border-slate-200 hover:border-slate-300 bg-white text-xs font-medium text-slate-700 hover:text-slate-900"
-                        >
-                          Editar
-                        </button>
-                      </div>
+                      )}
+                      <StatusBadge active={rubro.activo} />
                     </div>
 
-                    {/* Lista de Subrubros hijos */}
-                    {hijos.length > 0 && (
-                      <div className="pl-4 border-l-2 border-slate-200 divide-y divide-slate-100">
-                        {hijos.map((sub) => {
-                          const cantSub = countProductsBySubrubro(sub.id);
-                          return (
-                            <div
-                              key={sub.id}
-                              onClick={() => openEditSubrubro(sub)}
-                              className="py-2 px-3 rounded-md hover:bg-slate-50 cursor-pointer flex items-center justify-between gap-4"
-                            >
-                              <div className="flex items-center gap-2.5">
-                                <span className="text-sm text-slate-800">{sub.nombre}</span>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => openCreateSubrubro(rubro.id)}
+                        className="px-2.5 py-1.5 rounded-md text-xs font-medium text-slate-600 hover:text-slate-900 hover:bg-slate-100 transition-colors"
+                      >
+                        + Agregar subrubro
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => openEditRubro(rubro)}
+                        className="px-3 py-1.5 rounded-md border border-slate-200 hover:border-slate-300 bg-white text-xs font-medium text-slate-700 hover:text-slate-900"
+                      >
+                        Editar
+                      </button>
+                    </div>
+                  </div>
+
+                  {hijos.length > 0 && (
+                    <div className="pl-4 border-l-2 border-slate-200 divide-y divide-slate-100">
+                      {hijos.map((sub) => {
+                        const cantSub = countProductsBySubrubro(sub.id);
+                        return (
+                          <div
+                            key={sub.id}
+                            onClick={() => openEditSubrubro(sub)}
+                            className="py-2 px-3 rounded-md hover:bg-slate-50 cursor-pointer flex items-center justify-between gap-4"
+                          >
+                            <div className="flex items-center gap-2.5">
+                              <span className="text-sm text-slate-800">{sub.nombre}</span>
+                              {cantSub > 0 && (
                                 <span className="text-xs text-slate-500">
                                   ({cantSub} {cantSub === 1 ? "producto" : "productos"})
                                 </span>
-                                <StatusBadge active={sub.activo} />
-                              </div>
-                              <span className="text-xs font-medium text-slate-600 hover:text-slate-900">
-                                Editar
-                              </span>
+                              )}
+                              <StatusBadge active={sub.activo} />
                             </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                openEditSubrubro(sub);
+                              }}
+                              className="px-3 py-1.5 rounded-md border border-slate-200 hover:border-slate-300 bg-white text-xs font-medium text-slate-700 hover:text-slate-900"
+                            >
+                              Editar
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
 
         {/* ================================================================ */}
-        {/* PESTAÑA 3: MARCAS                                                */}
+        {/* PESTAÑA 3: MARCAS (D.9)                                          */}
         {/* ================================================================ */}
         {activeTab === "marcas" && (
           <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
@@ -600,16 +746,16 @@ function ProductosCatalogContent() {
                     className="hover:bg-slate-50 cursor-pointer transition-colors"
                   >
                     <td className="py-3 px-5">
-                      <div className="w-10 h-10 rounded-md bg-slate-100 border border-slate-200 overflow-hidden flex items-center justify-center shrink-0">
+                      <div className="w-11 h-11 rounded-md bg-white border border-slate-200 overflow-hidden flex items-center justify-center shrink-0 p-1">
                         {marca.logoUrl ? (
                           // eslint-disable-next-line @next/next/no-img-element
                           <img
                             src={marca.logoUrl}
                             alt={marca.nombre}
-                            className="w-full h-full object-contain bg-white"
+                            className="max-w-full max-h-full object-contain"
                           />
                         ) : (
-                          <span className="text-xs font-semibold text-slate-600">
+                          <span className="text-xs font-semibold text-slate-500">
                             {marca.nombre.slice(0, 2).toUpperCase()}
                           </span>
                         )}
@@ -633,11 +779,10 @@ function ProductosCatalogContent() {
         )}
 
         {/* ================================================================ */}
-        {/* PESTAÑA 4: DESCUENTOS (POR PRODUCTO/RUBRO + PROMO DEL CARRITO)   */}
+        {/* PESTAÑA 4: DESCUENTOS (D.10 + Regla de acumulación)              */}
         {/* ================================================================ */}
         {activeTab === "descuentos" && (
           <div className="space-y-8">
-            {/* Listado de descuentos por producto o rubro */}
             <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
               <div className="px-5 py-4 border-b border-slate-200">
                 <h2 className="text-base font-semibold text-slate-900">
@@ -654,6 +799,7 @@ function ProductosCatalogContent() {
                         <th className="py-3 px-5">Aplica a</th>
                         <th className="py-3 px-5">Beneficio</th>
                         <th className="py-3 px-5">Vigencia</th>
+                        <th className="py-3 px-5">Estado</th>
                         <th className="py-3 px-5 text-right">Acción</th>
                       </tr>
                     </thead>
@@ -672,11 +818,8 @@ function ProductosCatalogContent() {
                             onClick={() => openEditDescuento(desc)}
                             className="hover:bg-slate-50 cursor-pointer transition-colors"
                           >
-                            <td className="py-3.5 px-5">
-                              <div className="flex items-center gap-2">
-                                <span className="font-medium text-slate-900">{desc.nombre}</span>
-                                <StatusBadge active={desc.activo} />
-                              </div>
+                            <td className="py-3.5 px-5 font-medium text-slate-900">
+                              {desc.nombre}
                             </td>
                             <td className="py-3.5 px-5 text-slate-700">{targetLabel}</td>
                             <td className="py-3.5 px-5 font-semibold text-slate-900">
@@ -685,7 +828,10 @@ function ProductosCatalogContent() {
                                 : `Precio final ${money(desc.valor)}`}
                             </td>
                             <td className="py-3.5 px-5 text-xs text-slate-500">
-                              {desc.fechaInicio} al {desc.fechaFin}
+                              {formatDateAR(desc.fechaInicio)} al {formatDateAR(desc.fechaFin)}
+                            </td>
+                            <td className="py-3.5 px-5">
+                              <DiscountStatusBadge discount={desc} />
                             </td>
                             <td
                               className="py-3.5 px-5 text-right"
@@ -712,7 +858,7 @@ function ProductosCatalogContent() {
               )}
             </div>
 
-            {/* Promoción automática por monto del carrito (con vista previa conservada) */}
+            {/* Promoción automática por monto del carrito */}
             <form
               onSubmit={handleSaveCartPromo}
               className="bg-white rounded-lg border border-slate-200 p-6 space-y-5"
@@ -731,8 +877,19 @@ function ProductosCatalogContent() {
                 checked={promoConfig.isActive}
                 onChange={(checked) => setPromoConfig({ ...promoConfig, isActive: checked })}
                 label="Activar promoción en el carrito"
-                description="Muestra el progreso en el carrito lateral y descuenta el porcentaje automáticamente."
+                description="Muestra el progreso en el carrito lateral y aplica el porcentaje automáticamente."
               />
+
+              <div className="pt-2 border-t border-slate-100">
+                <AdminToggle
+                  checked={Boolean(promoConfig.stackWithProductDiscounts)}
+                  onChange={(checked) =>
+                    setPromoConfig({ ...promoConfig, stackWithProductDiscounts: checked })
+                  }
+                  label="Acumular con descuentos por producto o rubro"
+                  description="Si está desactivado, los artículos que ya tienen un descuento vigente no suman este porcentaje adicional."
+                />
+              </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 pt-2">
                 <div>
@@ -752,10 +909,6 @@ function ProductosCatalogContent() {
                     }
                     className="w-full px-3.5 py-2 rounded-md border border-slate-300 text-sm text-slate-900 focus:border-[#0f172a] outline-none"
                   />
-                  <p className="text-xs text-slate-500 mt-1">
-                    El cliente debe sumar {money(promoConfig.thresholdAmount)} para obtener el
-                    beneficio.
-                  </p>
                 </div>
 
                 <div>
@@ -775,9 +928,6 @@ function ProductosCatalogContent() {
                     }
                     className="w-full px-3.5 py-2 rounded-md border border-slate-300 text-sm text-slate-900 focus:border-[#0f172a] outline-none"
                   />
-                  <p className="text-xs text-slate-500 mt-1">
-                    Porcentaje que se restará del total del pedido.
-                  </p>
                 </div>
 
                 <div>
@@ -807,17 +957,30 @@ function ProductosCatalogContent() {
                 </div>
               </div>
 
-              {/* Vista previa en el carrito */}
-              <div className="p-4 rounded-md bg-slate-50 border border-slate-200 text-xs text-slate-700 space-y-1">
+              {/* Vista previa en vivo mientras se escribe */}
+              <div className="p-4 rounded-md bg-slate-50 border border-slate-200 text-xs text-slate-700 space-y-2">
                 <div className="font-semibold text-slate-900">Vista previa en el carrito:</div>
                 <p>
-                  Si un cliente agrega productos por $15.000, verá:{" "}
-                  <strong className="text-slate-900">
-                    &ldquo;Te faltan {money(Math.max(0, promoConfig.thresholdAmount - 15000))} para{" "}
-                    {promoConfig.discountPercent}% OFF&rdquo;
-                  </strong>
-                  . Al superar {money(promoConfig.thresholdAmount)}, se aplicará el{" "}
-                  {promoConfig.discountPercent}% de descuento automático.
+                  {promoConfig.isActive ? (
+                    <>
+                      Con un pedido de $ 15.000, el cliente verá:{" "}
+                      <strong className="text-slate-900">
+                        {promoConfig.thresholdAmount > 15000
+                          ? `"Te faltan ${money(
+                              promoConfig.thresholdAmount - 15000,
+                            )} para ${promoConfig.discountPercent}% OFF"`
+                          : `"¡Beneficio desbloqueado! ${promoConfig.benefitTitle || `${promoConfig.discountPercent}% OFF`}"`}
+                      </strong>
+                      . Al superar {money(promoConfig.thresholdAmount)}, se aplicará{" "}
+                      {promoConfig.discountPercent}% OFF (
+                      {promoConfig.stackWithProductDiscounts
+                        ? "acumulable con otros descuentos"
+                        : "no acumulable sobre productos ya rebajados"}
+                      ).
+                    </>
+                  ) : (
+                    "La promoción del carrito está desactivada actualmente."
+                  )}
                 </p>
               </div>
 
@@ -825,7 +988,7 @@ function ProductosCatalogContent() {
                 <button
                   type="submit"
                   disabled={savingPromo}
-                  className="px-4 py-2 rounded-md bg-[#0f172a] hover:bg-[#1e293b] text-white text-sm font-medium transition-colors"
+                  className="px-4 py-2 rounded-md bg-[#06b6d4] hover:bg-[#0891b2] text-white text-sm font-medium transition-colors disabled:opacity-60"
                 >
                   {savingPromo ? "Guardando..." : "Guardar promoción del carrito"}
                 </button>
@@ -866,15 +1029,22 @@ function ProductosCatalogContent() {
           />
 
           {editingRubro && (
-            <div className="pt-4 border-t border-slate-200 flex items-center justify-between">
-              <span className="text-xs text-slate-500">Eliminar rubro del catálogo</span>
-              <button
-                type="button"
-                onClick={() => setConfirmDeleteRubro(true)}
-                className="text-xs font-medium text-red-600 hover:underline"
-              >
-                Eliminar rubro
-              </button>
+            <div className="pt-4 border-t border-slate-200 space-y-2">
+              {editingRubroProductsCount > 0 ? (
+                <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-md p-3">
+                  No podés eliminar este rubro porque tiene {editingRubroProductsCount}{" "}
+                  {editingRubroProductsCount === 1 ? "producto asociado" : "productos asociados"}.
+                  Reasignalos primero o desactivá la visibilidad.
+                </p>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setConfirmDeleteRubro(true)}
+                  className="px-3.5 py-2 rounded-md border border-red-200 text-red-700 hover:bg-red-50 text-xs font-medium transition-colors"
+                >
+                  Eliminar rubro
+                </button>
+              )}
             </div>
           )}
 
@@ -908,7 +1078,7 @@ function ProductosCatalogContent() {
         }}
         title="Eliminar rubro"
         itemName={editingRubro?.nombre || ""}
-        warningText="También se quitarán sus subrubros asociados. Si solo querés ocultarlo temporalmente, desactivá su visibilidad."
+        warningText="También se quitarán sus subrubros vacíos asociados."
       />
 
       {/* ==================================================================== */}
@@ -959,15 +1129,22 @@ function ProductosCatalogContent() {
           />
 
           {editingSubrubro && (
-            <div className="pt-4 border-t border-slate-200 flex items-center justify-between">
-              <span className="text-xs text-slate-500">Eliminar subrubro</span>
-              <button
-                type="button"
-                onClick={() => setConfirmDeleteSubrubro(true)}
-                className="text-xs font-medium text-red-600 hover:underline"
-              >
-                Eliminar subrubro
-              </button>
+            <div className="pt-4 border-t border-slate-200 space-y-2">
+              {editingSubrubroProductsCount > 0 ? (
+                <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-md p-3">
+                  No podés eliminar este subrubro porque tiene {editingSubrubroProductsCount}{" "}
+                  {editingSubrubroProductsCount === 1 ? "producto asociado" : "productos asociados"}
+                  . Reasignalos primero.
+                </p>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setConfirmDeleteSubrubro(true)}
+                  className="px-3.5 py-2 rounded-md border border-red-200 text-red-700 hover:bg-red-50 text-xs font-medium transition-colors"
+                >
+                  Eliminar subrubro
+                </button>
+              )}
             </div>
           )}
 
@@ -1004,7 +1181,7 @@ function ProductosCatalogContent() {
       />
 
       {/* ==================================================================== */}
-      {/* DRAWER: CREAR / EDITAR MARCA                                         */}
+      {/* DRAWER: CREAR / EDITAR MARCA (D.9)                                   */}
       {/* ==================================================================== */}
       <AdminDrawer
         isOpen={marcaDrawerOpen}
@@ -1031,13 +1208,13 @@ function ProductosCatalogContent() {
               Logo (opcional)
             </label>
             <div className="flex items-center gap-4">
-              <div className="w-16 h-16 rounded-md bg-slate-100 border border-slate-200 overflow-hidden flex items-center justify-center shrink-0">
+              <div className="w-16 h-16 rounded-md bg-white border border-slate-200 overflow-hidden flex items-center justify-center shrink-0 p-1">
                 {marcaLogoUrl ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
                     src={marcaLogoUrl}
                     alt="Vista previa"
-                    className="w-full h-full object-contain bg-white"
+                    className="max-w-full max-h-full object-contain"
                   />
                 ) : (
                   <span className="text-xs font-semibold text-slate-500">
@@ -1074,15 +1251,22 @@ function ProductosCatalogContent() {
           </div>
 
           {editingMarca && (
-            <div className="pt-4 border-t border-slate-200 flex items-center justify-between">
-              <span className="text-xs text-slate-500">Eliminar marca</span>
-              <button
-                type="button"
-                onClick={() => setConfirmDeleteMarca(true)}
-                className="text-xs font-medium text-red-600 hover:underline"
-              >
-                Eliminar marca
-              </button>
+            <div className="pt-4 border-t border-slate-200 space-y-2">
+              {editingMarcaProductsCount > 0 ? (
+                <p className="text-xs text-amber-800 bg-amber-50 border border-amber-200 rounded-md p-3">
+                  No podés eliminar esta marca porque está asignada a {editingMarcaProductsCount}{" "}
+                  {editingMarcaProductsCount === 1 ? "producto" : "productos"}. Quitala de esos
+                  productos primero.
+                </p>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setConfirmDeleteMarca(true)}
+                  className="px-3.5 py-2 rounded-md border border-red-200 text-red-700 hover:bg-red-50 text-xs font-medium transition-colors"
+                >
+                  Eliminar marca
+                </button>
+              )}
             </div>
           )}
 
@@ -1119,7 +1303,7 @@ function ProductosCatalogContent() {
       />
 
       {/* ==================================================================== */}
-      {/* DRAWER: CREAR / EDITAR DESCUENTO                                     */}
+      {/* DRAWER: CREAR / EDITAR DESCUENTO (D.10: vacío por defecto)           */}
       {/* ==================================================================== */}
       <AdminDrawer
         isOpen={descuentoDrawerOpen}
@@ -1144,17 +1328,20 @@ function ProductosCatalogContent() {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1.5">
-                Aplicar sobre
+                Aplicar sobre *
               </label>
               <select
+                required
                 value={descAplicaA}
                 onChange={(e) => {
-                  const val = e.target.value as "PRODUCTO" | "RUBRO";
-                  setDescAplicaA(val);
-                  setDescTargetId(val === "RUBRO" ? rubros[0]?.id || "" : productos[0]?.id || "");
+                  setDescAplicaA(e.target.value as "" | "PRODUCTO" | "RUBRO");
+                  setDescTargetId("");
                 }}
                 className="w-full px-3.5 py-2 rounded-md border border-slate-300 text-sm text-slate-900 bg-white"
               >
+                <option value="" disabled>
+                  Elegí una opción...
+                </option>
                 <option value="RUBRO">Un rubro completo</option>
                 <option value="PRODUCTO">Un producto específico</option>
               </select>
@@ -1162,13 +1349,18 @@ function ProductosCatalogContent() {
 
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1.5">
-                {descAplicaA === "RUBRO" ? "Rubro" : "Producto"}
+                {descAplicaA === "PRODUCTO" ? "Producto *" : "Rubro *"}
               </label>
               <select
+                required
+                disabled={!descAplicaA}
                 value={descTargetId}
                 onChange={(e) => setDescTargetId(e.target.value)}
-                className="w-full px-3.5 py-2 rounded-md border border-slate-300 text-sm text-slate-900 bg-white"
+                className="w-full px-3.5 py-2 rounded-md border border-slate-300 text-sm text-slate-900 bg-white disabled:bg-slate-100 disabled:text-slate-400"
               >
+                <option value="" disabled>
+                  Seleccioná...
+                </option>
                 {descAplicaA === "RUBRO"
                   ? rubros.map((r) => (
                       <option key={r.id} value={r.id}>
@@ -1187,13 +1379,17 @@ function ProductosCatalogContent() {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1.5">
-                Tipo de beneficio
+                Tipo de beneficio *
               </label>
               <select
+                required
                 value={descTipo}
-                onChange={(e) => setDescTipo(e.target.value as "PORCENTAJE" | "PRECIO_FIJO")}
+                onChange={(e) => setDescTipo(e.target.value as "" | "PORCENTAJE" | "PRECIO_FIJO")}
                 className="w-full px-3.5 py-2 rounded-md border border-slate-300 text-sm text-slate-900 bg-white"
               >
+                <option value="" disabled>
+                  Seleccioná...
+                </option>
                 <option value="PORCENTAJE">Porcentaje (%)</option>
                 <option value="PRECIO_FIJO">Precio fijo ($)</option>
               </select>
@@ -1201,14 +1397,15 @@ function ProductosCatalogContent() {
 
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1.5">
-                {descTipo === "PORCENTAJE" ? "Porcentaje (%)" : "Precio final ($)"}
+                {descTipo === "PRECIO_FIJO" ? "Precio final ($) *" : "Valor *"}
               </label>
               <input
                 type="number"
                 min={1}
                 required
                 value={descValor}
-                onChange={(e) => setDescValor(Number(e.target.value))}
+                placeholder={descTipo === "PRECIO_FIJO" ? "Ej: 3500" : "Ej: 15"}
+                onChange={(e) => setDescValor(e.target.value)}
                 className="w-full px-3.5 py-2 rounded-md border border-slate-300 text-sm text-slate-900"
               />
             </div>
@@ -1217,10 +1414,11 @@ function ProductosCatalogContent() {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1.5">
-                Fecha de inicio
+                Fecha de inicio *
               </label>
               <input
                 type="date"
+                required
                 value={descInicio}
                 onChange={(e) => setDescInicio(e.target.value)}
                 className="w-full px-3.5 py-2 rounded-md border border-slate-300 text-sm text-slate-900"
@@ -1229,10 +1427,11 @@ function ProductosCatalogContent() {
 
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1.5">
-                Fecha de fin
+                Fecha de fin *
               </label>
               <input
                 type="date"
+                required
                 value={descFin}
                 onChange={(e) => setDescFin(e.target.value)}
                 className="w-full px-3.5 py-2 rounded-md border border-slate-300 text-sm text-slate-900"
@@ -1243,12 +1442,11 @@ function ProductosCatalogContent() {
           <AdminToggle checked={descActivo} onChange={setDescActivo} label="Descuento activo" />
 
           {editingDescuento && (
-            <div className="pt-4 border-t border-slate-200 flex items-center justify-between">
-              <span className="text-xs text-slate-500">Eliminar descuento</span>
+            <div className="pt-4 border-t border-slate-200">
               <button
                 type="button"
                 onClick={() => setConfirmDeleteDescuento(true)}
-                className="text-xs font-medium text-red-600 hover:underline"
+                className="px-3.5 py-2 rounded-md border border-red-200 text-red-700 hover:bg-red-50 text-xs font-medium transition-colors"
               >
                 Eliminar descuento
               </button>

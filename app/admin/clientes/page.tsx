@@ -1,21 +1,25 @@
 "use client";
 
 import React, { useState } from "react";
-import { Search } from "lucide-react";
+import Link from "next/link";
+import { Search, MessageCircle } from "lucide-react";
 import {
   useAdminCatalog,
   AdminPageHeader,
-  AdminTabs,
   AdminDrawer,
-  AdminToggle,
+  OrderStatusBadge,
   AdminCustomer,
 } from "@/frontend/context/AdminCatalogContext";
 import { money } from "@/frontend/utils/store";
 
-export default function AdminClientesPage() {
-  const { clientes, pedidos, consultas, toggleConsultaRespondida } = useAdminCatalog();
+function formatWhatsAppUrl(phone: string): string {
+  const digits = phone.replace(/\D/g, "");
+  const normalized = digits.startsWith("54") ? digits : `549${digits.replace(/^0+/, "")}`;
+  return `https://wa.me/${normalized}`;
+}
 
-  const [activeTab, setActiveTab] = useState<"clientes" | "consultas">("clientes");
+export default function AdminClientesPage() {
+  const { clientes, pedidos } = useAdminCatalog();
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCustomer, setSelectedCustomer] = useState<AdminCustomer | null>(null);
 
@@ -31,141 +35,100 @@ export default function AdminClientesPage() {
 
   const getCustomerOrders = (clienteId: string) => pedidos.filter((p) => p.clienteId === clienteId);
 
-  const consultasPendientes = consultas.filter((c) => !c.respondida).length;
-
   return (
     <div className="min-h-full pb-16">
       <AdminPageHeader title="Clientes" />
 
-      <div className="px-6 sm:px-8 max-w-6xl mx-auto">
-        <AdminTabs
-          activeTab={activeTab}
-          onChange={(id) => setActiveTab(id as "clientes" | "consultas")}
-          tabs={[
-            { id: "clientes", label: "Clientes", count: clientes.length },
-            { id: "consultas", label: "Consultas", count: consultasPendientes || consultas.length },
-          ]}
-        />
+      <div className="px-6 sm:px-8 max-w-6xl mx-auto space-y-4">
+        {/* Buscador compacto */}
+        <div className="bg-white p-4 rounded-lg border border-slate-200">
+          <div className="relative max-w-md">
+            <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Buscar por nombre, teléfono o correo..."
+              className="w-full pl-9 pr-3.5 py-2 bg-white border border-slate-300 rounded-md text-sm text-slate-900 placeholder:text-slate-400 focus:border-[#0f172a] outline-none"
+            />
+          </div>
+        </div>
 
-        {/* PESTAÑA 1: CLIENTES */}
-        {activeTab === "clientes" && (
-          <div className="space-y-4">
-            <div className="bg-white p-4 rounded-lg border border-slate-200">
-              <div className="relative max-w-md">
-                <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                <input
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Buscar por nombre, teléfono o correo..."
-                  className="w-full pl-9 pr-3.5 py-2 bg-white border border-slate-300 rounded-md text-sm text-slate-900 placeholder:text-slate-400 focus:border-[#0f172a] outline-none"
-                />
-              </div>
-            </div>
-
-            <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
-              {filteredClientes.length > 0 ? (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-left text-sm border-collapse">
-                    <thead>
-                      <tr className="bg-slate-50 border-b border-slate-200 text-xs font-semibold text-slate-600">
-                        <th className="py-3 px-5">Nombre</th>
-                        <th className="py-3 px-5">Contacto</th>
-                        <th className="py-3 px-5">Pedidos</th>
-                        <th className="py-3 px-5 text-right">Acción</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-100">
-                      {filteredClientes.map((cliente) => {
-                        const pedidosCliente = getCustomerOrders(cliente.id);
-                        return (
-                          <tr
-                            key={cliente.id}
-                            onClick={() => setSelectedCustomer(cliente)}
-                            className="hover:bg-slate-50 cursor-pointer transition-colors"
-                          >
-                            <td className="py-3.5 px-5 font-medium text-slate-900">
-                              {cliente.nombre}
-                            </td>
-                            <td className="py-3.5 px-5">
-                              <div className="text-slate-800">{cliente.telefono}</div>
-                              <div className="text-xs text-slate-500">{cliente.email}</div>
-                            </td>
-                            <td className="py-3.5 px-5 text-slate-700">
-                              {pedidosCliente.length}{" "}
-                              {pedidosCliente.length === 1 ? "pedido" : "pedidos"}
-                            </td>
-                            <td
-                              className="py-3.5 px-5 text-right"
-                              onClick={(e) => e.stopPropagation()}
+        {/* Tabla de clientes */}
+        <div className="bg-white rounded-lg border border-slate-200 overflow-hidden">
+          {filteredClientes.length > 0 ? (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-sm border-collapse">
+                <thead>
+                  <tr className="bg-slate-50 border-b border-slate-200 text-xs font-semibold text-slate-600">
+                    <th className="py-3 px-5">Nombre</th>
+                    <th className="py-3 px-5">Contacto</th>
+                    <th className="py-3 px-5">Pedidos</th>
+                    <th className="py-3 px-5 text-right">Acción</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {filteredClientes.map((cliente) => {
+                    const pedidosCliente = getCustomerOrders(cliente.id);
+                    return (
+                      <tr
+                        key={cliente.id}
+                        onClick={() => setSelectedCustomer(cliente)}
+                        className="hover:bg-slate-50 cursor-pointer transition-colors"
+                      >
+                        <td className="py-3.5 px-5 font-medium text-slate-900">{cliente.nombre}</td>
+                        <td className="py-3.5 px-5" onClick={(e) => e.stopPropagation()}>
+                          <div className="flex items-center gap-2">
+                            <a
+                              href={`tel:${cliente.telefono.replace(/\s+/g, "")}`}
+                              className="text-[#0f172a] hover:underline"
                             >
-                              <button
-                                type="button"
-                                onClick={() => setSelectedCustomer(cliente)}
-                                className="px-3 py-1.5 rounded-md border border-slate-200 hover:border-slate-300 bg-white text-xs font-medium text-slate-700 hover:text-slate-900"
-                              >
-                                Ver detalle
-                              </button>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              ) : (
-                <div className="p-12 text-center">
-                  <p className="text-sm font-medium text-slate-900">
-                    No se encontraron clientes con ese criterio
-                  </p>
-                </div>
-              )}
+                              {cliente.telefono}
+                            </a>
+                            <a
+                              href={formatWhatsAppUrl(cliente.telefono)}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-slate-400 hover:text-emerald-600"
+                              title="Escribir por WhatsApp"
+                            >
+                              <MessageCircle className="w-3.5 h-3.5" />
+                            </a>
+                          </div>
+                          <a
+                            href={`mailto:${cliente.email}`}
+                            className="text-xs text-slate-500 hover:text-slate-800 hover:underline block"
+                          >
+                            {cliente.email}
+                          </a>
+                        </td>
+                        <td className="py-3.5 px-5 text-slate-700">
+                          {pedidosCliente.length}{" "}
+                          {pedidosCliente.length === 1 ? "pedido" : "pedidos"}
+                        </td>
+                        <td className="py-3.5 px-5 text-right" onClick={(e) => e.stopPropagation()}>
+                          <button
+                            type="button"
+                            onClick={() => setSelectedCustomer(cliente)}
+                            className="px-3 py-1.5 rounded-md border border-slate-200 hover:border-slate-300 bg-white text-xs font-medium text-slate-700 hover:text-slate-900"
+                          >
+                            Ver detalle
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
-          </div>
-        )}
-
-        {/* PESTAÑA 2: CONSULTAS */}
-        {activeTab === "consultas" && (
-          <div className="bg-white rounded-lg border border-slate-200 divide-y divide-slate-200">
-            {consultas.length > 0 ? (
-              consultas.map((consulta) => (
-                <div key={consulta.id} className="p-5 space-y-3">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                    <div className="flex items-center gap-2.5">
-                      <span className="font-semibold text-slate-900">{consulta.clienteNombre}</span>
-                      <span className="text-xs text-slate-500">({consulta.contacto})</span>
-                      {!consulta.respondida && (
-                        <span className="inline-flex px-2 py-0.5 rounded-md text-xs font-medium bg-amber-50 text-amber-800 border border-amber-200">
-                          Pendiente
-                        </span>
-                      )}
-                    </div>
-                    <span className="text-xs text-slate-500">{consulta.fecha}</span>
-                  </div>
-
-                  <div>
-                    <div className="text-sm font-medium text-slate-900">{consulta.asunto}</div>
-                    <p className="text-sm text-slate-600 mt-1 leading-relaxed">
-                      {consulta.mensaje}
-                    </p>
-                  </div>
-
-                  <div className="pt-2">
-                    <AdminToggle
-                      checked={consulta.respondida}
-                      onChange={() => toggleConsultaRespondida(consulta.id)}
-                      label="Marcar como respondida"
-                    />
-                  </div>
-                </div>
-              ))
-            ) : (
-              <div className="p-12 text-center text-sm text-slate-500">
-                No hay consultas de clientes registradas.
-              </div>
-            )}
-          </div>
-        )}
+          ) : (
+            <div className="p-12 text-center">
+              <p className="text-sm font-medium text-slate-900">
+                No se encontraron clientes con ese criterio
+              </p>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Detalle del Cliente e Historial de Pedidos */}
@@ -182,11 +145,31 @@ export default function AdminClientesPage() {
               </h3>
               <div className="flex justify-between py-1">
                 <span className="text-slate-500">Teléfono:</span>
-                <span className="font-medium text-slate-900">{selectedCustomer.telefono}</span>
+                <div className="flex items-center gap-2">
+                  <a
+                    href={`tel:${selectedCustomer.telefono.replace(/\s+/g, "")}`}
+                    className="font-medium text-[#0f172a] hover:underline"
+                  >
+                    {selectedCustomer.telefono}
+                  </a>
+                  <a
+                    href={formatWhatsAppUrl(selectedCustomer.telefono)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs text-[#06b6d4] hover:underline"
+                  >
+                    WhatsApp
+                  </a>
+                </div>
               </div>
               <div className="flex justify-between py-1">
                 <span className="text-slate-500">Correo:</span>
-                <span className="text-slate-800">{selectedCustomer.email}</span>
+                <a
+                  href={`mailto:${selectedCustomer.email}`}
+                  className="text-[#0f172a] hover:underline"
+                >
+                  {selectedCustomer.email}
+                </a>
               </div>
               {selectedCustomer.direccion && (
                 <div className="flex justify-between py-1 gap-4">
@@ -207,18 +190,20 @@ export default function AdminClientesPage() {
               {getCustomerOrders(selectedCustomer.id).length > 0 ? (
                 <div className="divide-y divide-slate-100">
                   {getCustomerOrders(selectedCustomer.id).map((ord) => (
-                    <div
+                    <Link
                       key={ord.id}
-                      className="py-3 flex items-center justify-between gap-4 text-sm"
+                      href={`/admin/pedidos?pedido=${ord.id}`}
+                      className="py-3 px-2 -mx-2 rounded-md hover:bg-slate-50 flex items-center justify-between gap-4 text-sm transition-colors"
                     >
                       <div>
-                        <div className="font-medium text-slate-900">Pedido #{ord.numero}</div>
-                        <div className="text-xs text-slate-500">
-                          {ord.fecha} · {ord.estado}
+                        <div className="flex items-center gap-2">
+                          <span className="font-medium text-slate-900">Pedido #{ord.numero}</span>
+                          <OrderStatusBadge status={ord.estado} />
                         </div>
+                        <div className="text-xs text-slate-500 mt-0.5">{ord.fecha}</div>
                       </div>
                       <div className="font-semibold text-slate-900">{money(ord.total)}</div>
-                    </div>
+                    </Link>
                   ))}
                 </div>
               ) : (

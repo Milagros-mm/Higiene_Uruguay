@@ -18,7 +18,11 @@ export const STORE = {
 };
 
 export const money = (n: number) =>
-  new Intl.NumberFormat("es-AR", { style: "currency", currency: "ARS", maximumFractionDigits: 0 }).format(n);
+  new Intl.NumberFormat("es-AR", {
+    style: "currency",
+    currency: "ARS",
+    maximumFractionDigits: 0,
+  }).format(n);
 
 import type { CartItem, CheckoutFormData } from "@/types";
 
@@ -28,6 +32,7 @@ export interface StorePromotionConfig {
   benefitTitle: string; // Título promocional
   isActive: boolean; // Si está activa la promo
   bannerText: string; // Texto mostrado en barra/carrito
+  stackWithProductDiscounts?: boolean; // false = no acumula sobre ítems con descuento vigente (Opción A)
 }
 
 export const DEFAULT_PROMOTION_CONFIG: StorePromotionConfig = {
@@ -36,86 +41,112 @@ export const DEFAULT_PROMOTION_CONFIG: StorePromotionConfig = {
   benefitTitle: "10% OFF en el total de tu compra",
   isActive: true,
   bannerText: "¡Superando los $25.000 obtenés un 10% de DESCUENTO automático!",
+  stackWithProductDiscounts: false,
 };
 
-export const PROMO_STORAGE_KEY = 'higiene_uruguay_promo_config';
+export const PROMO_STORAGE_KEY = "higiene_uruguay_promo_config";
 
 export function getStoredPromotionConfig(): StorePromotionConfig {
-  if (typeof window === 'undefined') return DEFAULT_PROMOTION_CONFIG;
+  if (typeof window === "undefined") return DEFAULT_PROMOTION_CONFIG;
   try {
     const raw = localStorage.getItem(PROMO_STORAGE_KEY);
     if (raw) return JSON.parse(raw);
   } catch (e) {
-    console.error('Error leyendo config promocional', e);
+    console.error("Error leyendo config promocional", e);
   }
   return DEFAULT_PROMOTION_CONFIG;
 }
 
 export function saveStoredPromotionConfig(config: StorePromotionConfig): void {
-  if (typeof window === 'undefined') return;
+  if (typeof window === "undefined") return;
   try {
     localStorage.setItem(PROMO_STORAGE_KEY, JSON.stringify(config));
-    window.dispatchEvent(new Event('promo-config-updated'));
+    window.dispatchEvent(new Event("promo-config-updated"));
   } catch (e) {
-    console.error('Error guardando config promocional', e);
+    console.error("Error guardando config promocional", e);
   }
 }
 
 export interface CouponItem {
   code: string;
-  type: 'PERCENT' | 'FIXED';
+  type: "PERCENT" | "FIXED";
   value: number;
   description: string;
 }
 
 export const VALID_COUPONS: Record<string, CouponItem> = {
-  HIGIENE10: { code: 'HIGIENE10', type: 'PERCENT', value: 10, description: '10% OFF adicional' },
-  PROMO15: { code: 'PROMO15', type: 'PERCENT', value: 15, description: '15% OFF especial' },
-  BIENVENIDA: { code: 'BIENVENIDA', type: 'FIXED', value: 2000, description: '$2.000 de descuento' },
+  HIGIENE10: { code: "HIGIENE10", type: "PERCENT", value: 10, description: "10% OFF adicional" },
+  PROMO15: { code: "PROMO15", type: "PERCENT", value: 15, description: "15% OFF especial" },
+  BIENVENIDA: {
+    code: "BIENVENIDA",
+    type: "FIXED",
+    value: 2000,
+    description: "$2.000 de descuento",
+  },
 };
 
 export function buildWhatsAppOrderMessage(
   data: CheckoutFormData,
   items: CartItem[],
-  subtotal: number
+  subtotal: number,
 ): string {
+  const orderHeader = data.orderNumber
+    ? `🛒 *NUEVO PEDIDO #${data.orderNumber} - HIGIENE URUGUAY*`
+    : `🛒 *NUEVO PEDIDO - HIGIENE URUGUAY*`;
+
   const lines: string[] = [
-    `🛒 *NUEVO PEDIDO - HIGIENE URUGUAY*`,
+    orderHeader,
     `----------------------------------------`,
     `👤 *Cliente:* ${data.customerName.trim()}`,
     `📱 *Teléfono:* ${data.phone.trim()}`,
   ];
 
-  if (data.deliveryType === 'PICKUP') {
+  if (data.deliveryType === "PICKUP") {
     lines.push(`🏪 *Modalidad:* Retiro en el local (14 de Julio 14)`);
     if (data.pickupTimeSlot) {
       lines.push(`⏰ *Horario estimado de retiro:* ${data.pickupTimeSlot}`);
     }
-  } else if (data.deliveryType === 'BUYER_SHIPPING') {
+  } else if (data.deliveryType === "BUYER_SHIPPING") {
     lines.push(`🛵 *Modalidad:* Envío a coordinar (a cargo del comprador / cadetería)`);
     if (data.address?.trim()) {
-      lines.push(`📍 *Dirección de entrega:* ${data.address.trim()}${data.cornerStreet ? ` (${data.cornerStreet.trim()})` : ''}`);
+      lines.push(
+        `📍 *Dirección de entrega:* ${data.address.trim()}${data.cornerStreet ? ` (${data.cornerStreet.trim()})` : ""}`,
+      );
     }
   } else {
     lines.push(`🚚 *Modalidad:* Envío a domicilio`);
-    lines.push(`📍 *Dirección:* ${data.address?.trim() || 'A coordinar'}${data.cornerStreet ? ` (${data.cornerStreet.trim()})` : ''}`);
+    lines.push(
+      `📍 *Dirección:* ${data.address?.trim() || "A coordinar"}${data.cornerStreet ? ` (${data.cornerStreet.trim()})` : ""}`,
+    );
   }
 
-  lines.push(`💳 *Forma de Pago:* ${data.paymentMethod === 'TRANSFERENCIA' ? 'Transferencia Bancaria' : 'Efectivo'}`);
+  lines.push(
+    `💳 *Forma de Pago (informativa):* ${data.paymentMethod === "TRANSFERENCIA" ? "Transferencia Bancaria" : "Efectivo"}`,
+  );
   lines.push(`----------------------------------------`);
   lines.push(`📦 *DETALLE DE ARTÍCULOS:*`);
 
   items.forEach((item) => {
-    const unitText = item.selectedUnit ? ` (${item.selectedUnit})` : '';
-    const bulkTag = item.product.isBulk ? ' [Suelto]' : '';
-    lines.push(`• *${item.quantity}x* ${item.product.name}${unitText}${bulkTag} — ${money(item.totalPrice)}`);
+    const unitText = item.selectedUnit ? ` (${item.selectedUnit})` : "";
+    const bulkTag = item.product.isBulk ? " [Suelto: confirmar disponibilidad]" : "";
+    const itemDiscount =
+      item.product.originalPrice && item.product.originalPrice > item.price
+        ? ` (con descuento aplicado)`
+        : "";
+    lines.push(
+      `• *${item.quantity}x* ${item.product.name}${unitText}${bulkTag}${itemDiscount} — ${money(item.totalPrice)}`,
+    );
   });
 
   lines.push(`----------------------------------------`);
   lines.push(`Subtotal: ${money(subtotal)}`);
 
+  if (data.productDiscountTotal && data.productDiscountTotal > 0) {
+    lines.push(`🏷️ *Descuento en productos:* -${money(data.productDiscountTotal)}`);
+  }
+
   if (data.spendDiscount && data.spendDiscount > 0) {
-    lines.push(`🎁 *Descuento por Monto:* -${money(data.spendDiscount)}`);
+    lines.push(`🎁 *Descuento por Monto del carrito:* -${money(data.spendDiscount)}`);
   }
 
   if (data.couponDiscount && data.couponDiscount > 0) {
@@ -127,7 +158,10 @@ export function buildWhatsAppOrderMessage(
 
   const hasInquiry = items.some((item) => item.product.requiresStockInquiry || item.product.isBulk);
   if (hasInquiry) {
-    lines.push(`⚠️ *Aviso:* Contiene artículos sueltos sujetos a confirmación de stock físico en local.`);
+    lines.push(`⚠️ *Sueltos:* Sujeto a disponibilidad en el local.`);
+    if (data.bulkPreference) {
+      lines.push(`🔁 *Si falta stock de un suelto:* ${data.bulkPreference}`);
+    }
   }
 
   if (data.notes && data.notes.trim()) {
@@ -137,13 +171,13 @@ export function buildWhatsAppOrderMessage(
   lines.push(`----------------------------------------`);
   lines.push(`¡Hola! Quiero confirmar este pedido realizado en la tienda online.`);
 
-  return lines.join('\n');
+  return lines.join("\n");
 }
 
 export function getWhatsAppOrderUrl(
   data: CheckoutFormData,
   items: CartItem[],
-  subtotal: number
+  subtotal: number,
 ): string {
   const text = buildWhatsAppOrderMessage(data, items, subtotal);
   return `https://wa.me/${STORE.whatsapp}?text=${encodeURIComponent(text)}`;

@@ -3,12 +3,14 @@
 import React, { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Upload, X, Lock } from "lucide-react";
+import { ArrowLeft, Upload, X, Lock, ChevronLeft, ChevronRight } from "lucide-react";
 import {
   useAdminCatalog,
   AdminProduct,
   AdminToggle,
   ConfirmDeleteModal,
+  AutoResizeTextarea,
+  getProductActiveDiscount,
 } from "@/frontend/context/AdminCatalogContext";
 import { money } from "@/frontend/utils/store";
 
@@ -19,12 +21,11 @@ interface ProductFormProps {
 
 export function ProductForm({ initialProduct, isNew = false }: ProductFormProps) {
   const router = useRouter();
-  const { rubros, subrubros, marcas, saveProducto, deleteProducto } = useAdminCatalog();
+  const { rubros, subrubros, marcas, descuentos, saveProducto, deleteProducto } = useAdminCatalog();
 
   const sincronizado = initialProduct ? initialProduct.sincronizado : false;
 
   // 1. Datos básicos
-  const [sku, setSku] = useState(initialProduct?.sku || "");
   const [barcode, setBarcode] = useState(initialProduct?.barcode || "");
   const [nombre, setNombre] = useState(initialProduct?.nombre || "");
   const [presentacion, setPresentacion] = useState(initialProduct?.presentacion || "");
@@ -37,16 +38,16 @@ export function ProductForm({ initialProduct, isNew = false }: ProductFormProps)
   const [imagenes, setImagenes] = useState<string[]>(initialProduct?.imagenes || []);
   const [nuevaImagenUrl, setNuevaImagenUrl] = useState("");
 
-  // 3. Precio y stock
-  const [precioSistema, setPrecioSistema] = useState<number>(initialProduct?.precioSistema || 0);
-  const [precioOferta, setPrecioOferta] = useState<string>(
-    initialProduct?.precioOferta ? String(initialProduct.precioOferta) : "",
+  // 3. Precio y stock (D.11: vacíos por defecto en un producto nuevo)
+  const [precioInput, setPrecioInput] = useState<string>(
+    initialProduct && initialProduct.precioSistema > 0 ? String(initialProduct.precioSistema) : "",
   );
-  const [stock, setStock] = useState<number>(initialProduct?.stock ?? 0);
+  const [stockInput, setStockInput] = useState<string>(
+    initialProduct && !initialProduct.esSuelto && !initialProduct.stockSinDato
+      ? String(initialProduct.stock)
+      : "",
+  );
   const [esSuelto, setEsSuelto] = useState<boolean>(initialProduct?.esSuelto ?? false);
-  const [controlarStock, setControlarStock] = useState<boolean>(
-    initialProduct?.controlarStock ?? true,
-  );
 
   // 4. Rubro y marca
   const [rubroId, setRubroId] = useState(initialProduct?.rubroId || "");
@@ -56,11 +57,26 @@ export function ProductForm({ initialProduct, isNew = false }: ProductFormProps)
   // 5. Visibilidad
   const [activo, setActivo] = useState<boolean>(initialProduct?.activo ?? true);
 
+  // Control de cambios sin guardar y confirmación
+  const [isDirty, setIsDirty] = useState(false);
+  const [showCancelConfirm, setShowCancelConfirm] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
 
+  const markDirty = () => {
+    if (!isDirty) setIsDirty(true);
+  };
+
   const subrubrosDisponibles = subrubros.filter((s) => s.rubroId === rubroId);
+  const parsedPrice = Number(precioInput) || 0;
+
+  const activeDiscount = initialProduct
+    ? getProductActiveDiscount(
+        { id: initialProduct.id, rubroId, precioSistema: parsedPrice },
+        descuentos,
+      )
+    : null;
 
   const handleImageFile = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -69,6 +85,7 @@ export function ProductForm({ initialProduct, isNew = false }: ProductFormProps)
     reader.onload = () => {
       if (typeof reader.result === "string") {
         setImagenes((prev) => [...prev, reader.result as string]);
+        markDirty();
       }
     };
     reader.readAsDataURL(file);
@@ -78,10 +95,33 @@ export function ProductForm({ initialProduct, isNew = false }: ProductFormProps)
     if (!nuevaImagenUrl.trim()) return;
     setImagenes((prev) => [...prev, nuevaImagenUrl.trim()]);
     setNuevaImagenUrl("");
+    markDirty();
   };
 
   const handleRemoveImage = (index: number) => {
     setImagenes((prev) => prev.filter((_, idx) => idx !== index));
+    markDirty();
+  };
+
+  const handleMoveImage = (index: number, direction: -1 | 1) => {
+    const nextIndex = index + direction;
+    if (nextIndex < 0 || nextIndex >= imagenes.length) return;
+    setImagenes((prev) => {
+      const updated = [...prev];
+      const temp = updated[index];
+      updated[index] = updated[nextIndex];
+      updated[nextIndex] = temp;
+      return updated;
+    });
+    markDirty();
+  };
+
+  const handleCancelClick = () => {
+    if (isDirty) {
+      setShowCancelConfirm(true);
+    } else {
+      router.push("/admin/productos");
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -92,27 +132,27 @@ export function ProductForm({ initialProduct, isNew = false }: ProductFormProps)
     try {
       await saveProducto({
         id: initialProduct?.id,
-        sku: sku.trim() || "SIN-CODIGO",
+        sku: initialProduct?.sku || "",
         barcode: barcode.trim(),
-        nombreOriginalSistema: initialProduct?.nombreOriginalSistema || nombre.toUpperCase(),
+        nombreOriginalSistema: initialProduct?.nombreOriginalSistema || "",
         nombre: nombre.trim(),
         descripcion: descripcion.trim(),
         modoDeUso: modoDeUso.trim(),
         advertencias: advertencias.trim(),
         superficiesAptas: superficiesAptas.trim(),
         presentacion: presentacion.trim(),
-        precioSistema: Number(precioSistema) || 0,
-        precioOferta: precioOferta ? Number(precioOferta) : undefined,
-        stock: Number(stock) || 0,
+        precioSistema: parsedPrice,
+        stock: esSuelto ? 0 : Math.max(0, Number(stockInput) || 0),
+        stockSinDato: false,
         esSuelto,
-        controlarStock: esSuelto ? false : controlarStock,
         rubroId,
         subrubroId: subrubroId || undefined,
         marcaId: marcaId || undefined,
         imagenes,
-        activo,
+        activo: parsedPrice > 0 ? activo : false,
         sincronizado,
       });
+      setIsDirty(false);
       router.push("/admin/productos");
     } finally {
       setIsSaving(false);
@@ -137,13 +177,14 @@ export function ProductForm({ initialProduct, isNew = false }: ProductFormProps)
       <div className="bg-white border-b border-slate-200 px-6 sm:px-8 py-5 mb-6">
         <div className="max-w-4xl mx-auto flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            <Link
-              href="/admin/productos"
+            <button
+              type="button"
+              onClick={handleCancelClick}
               className="p-2 rounded-md border border-slate-200 text-slate-600 hover:text-slate-900 hover:bg-slate-50 transition-colors"
               aria-label="Volver a productos"
             >
               <ArrowLeft className="w-4 h-4" />
-            </Link>
+            </button>
             <h1 className="text-2xl font-semibold text-[#0f172a] tracking-tight">
               {isNew ? "Nuevo producto" : nombre || "Editar producto"}
             </h1>
@@ -152,19 +193,11 @@ export function ProductForm({ initialProduct, isNew = false }: ProductFormProps)
       </div>
 
       <form onSubmit={handleSubmit} className="px-6 sm:px-8 max-w-4xl mx-auto space-y-6">
-        {/* Aviso claro sobre campos sincronizados vs editables */}
+        {/* Nota de una línea en productos sincronizados */}
         {sincronizado && (
-          <div className="bg-slate-100 border border-slate-200 rounded-lg p-4 text-xs text-slate-700 flex items-start gap-3">
-            <Lock className="w-4 h-4 text-slate-500 shrink-0 mt-0.5" />
-            <div>
-              <span className="font-semibold text-slate-900">
-                Producto vinculado con el sistema del local:
-              </span>{" "}
-              el código, el precio base y el stock físico se actualizan automáticamente en cada
-              sincronización (solo lectura). Todos los demás datos (nombre comercial, fotos, rubro,
-              marca, precio de oferta, venta suelta y visibilidad) se conservan en la tienda sin
-              pisarse.
-            </div>
+          <div className="bg-slate-100 border border-slate-200 rounded-lg px-4 py-3 text-xs text-slate-700 flex items-center gap-2.5">
+            <Lock className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+            <span>El código, el precio base y el stock vienen del sistema del local.</span>
           </div>
         )}
 
@@ -175,36 +208,40 @@ export function ProductForm({ initialProduct, isNew = false }: ProductFormProps)
           </h2>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1.5">
-                Código (SKU){" "}
-                {sincronizado && <span className="text-xs text-slate-500">(Sincronizado)</span>}
-              </label>
-              <input
-                type="text"
-                value={sku}
-                readOnly={sincronizado}
-                onChange={(e) => setSku(e.target.value)}
-                className={`w-full px-3.5 py-2 rounded-md border text-sm ${
-                  sincronizado
-                    ? "bg-slate-100 border-slate-200 text-slate-600 cursor-not-allowed"
-                    : "bg-white border-slate-300 text-slate-900 focus:border-[#0f172a] outline-none"
-                }`}
-              />
-            </div>
+            {/* D.6: Solo mostrar SKU y Nombre original cuando el producto proviene de sincronización */}
+            {!isNew && sincronizado && (
+              <>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                    Código (SKU)
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={initialProduct?.sku || ""}
+                      readOnly
+                      className="w-full pl-3.5 pr-9 py-2 rounded-md border border-slate-200 bg-slate-100 text-sm text-slate-600 cursor-not-allowed"
+                    />
+                    <Lock className="w-3.5 h-3.5 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2" />
+                  </div>
+                </div>
 
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1.5">
-                Nombre original en el sistema{" "}
-                {sincronizado && <span className="text-xs text-slate-500">(Solo lectura)</span>}
-              </label>
-              <input
-                type="text"
-                value={initialProduct?.nombreOriginalSistema || nombre}
-                readOnly
-                className="w-full px-3.5 py-2 rounded-md border border-slate-200 bg-slate-100 text-sm text-slate-600 cursor-not-allowed"
-              />
-            </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                    Nombre original en el sistema
+                  </label>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={initialProduct?.nombreOriginalSistema || nombre}
+                      readOnly
+                      className="w-full pl-3.5 pr-9 py-2 rounded-md border border-slate-200 bg-slate-100 text-sm text-slate-600 cursor-not-allowed"
+                    />
+                    <Lock className="w-3.5 h-3.5 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2" />
+                  </div>
+                </div>
+              </>
+            )}
 
             <div className="sm:col-span-2">
               <label className="block text-sm font-medium text-slate-700 mb-1.5">
@@ -214,13 +251,18 @@ export function ProductForm({ initialProduct, isNew = false }: ProductFormProps)
                 type="text"
                 required
                 value={nombre}
-                onChange={(e) => setNombre(e.target.value)}
+                onChange={(e) => {
+                  setNombre(e.target.value);
+                  markDirty();
+                }}
                 placeholder="Ej: Cloro Líquido Concentrado 10L"
                 className="w-full px-3.5 py-2 rounded-md border border-slate-300 text-sm text-slate-900 focus:border-[#0f172a] outline-none"
               />
-              <p className="text-xs text-slate-500 mt-1">
-                Podés mejorar el nombre para tus clientes; la sincronización no lo sobrescribe.
-              </p>
+              {sincronizado && (
+                <p className="text-xs text-slate-500 mt-1">
+                  Podés mejorar el nombre para tus clientes; la sincronización no lo sobrescribe.
+                </p>
+              )}
             </div>
 
             <div>
@@ -230,7 +272,10 @@ export function ProductForm({ initialProduct, isNew = false }: ProductFormProps)
               <input
                 type="text"
                 value={presentacion}
-                onChange={(e) => setPresentacion(e.target.value)}
+                onChange={(e) => {
+                  setPresentacion(e.target.value);
+                  markDirty();
+                }}
                 placeholder="Ej: Bidón 5 Litros"
                 className="w-full px-3.5 py-2 rounded-md border border-slate-300 text-sm text-slate-900 focus:border-[#0f172a] outline-none"
               />
@@ -238,29 +283,40 @@ export function ProductForm({ initialProduct, isNew = false }: ProductFormProps)
 
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1.5">
-                Código de barras
+                Código de barras (opcional)
               </label>
-              <input
-                type="text"
-                value={barcode}
-                readOnly={sincronizado}
-                onChange={(e) => setBarcode(e.target.value)}
-                className={`w-full px-3.5 py-2 rounded-md border text-sm ${
-                  sincronizado
-                    ? "bg-slate-100 border-slate-200 text-slate-600 cursor-not-allowed"
-                    : "bg-white border-slate-300 text-slate-900 focus:border-[#0f172a] outline-none"
-                }`}
-              />
+              <div className="relative">
+                <input
+                  type="text"
+                  value={barcode}
+                  readOnly={sincronizado}
+                  onChange={(e) => {
+                    setBarcode(e.target.value);
+                    markDirty();
+                  }}
+                  placeholder="Ej: 7791234560012"
+                  className={`w-full px-3.5 py-2 rounded-md border text-sm ${
+                    sincronizado
+                      ? "pr-9 bg-slate-100 border-slate-200 text-slate-600 cursor-not-allowed"
+                      : "bg-white border-slate-300 text-slate-900 focus:border-[#0f172a] outline-none"
+                  }`}
+                />
+                {sincronizado && (
+                  <Lock className="w-3.5 h-3.5 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2" />
+                )}
+              </div>
             </div>
 
             <div className="sm:col-span-2">
               <label className="block text-sm font-medium text-slate-700 mb-1.5">Descripción</label>
-              <textarea
+              <AutoResizeTextarea
                 rows={3}
                 value={descripcion}
-                onChange={(e) => setDescripcion(e.target.value)}
+                onChange={(e) => {
+                  setDescripcion(e.target.value);
+                  markDirty();
+                }}
                 placeholder="Características principales y usos del producto..."
-                className="w-full px-3.5 py-2 rounded-md border border-slate-300 text-sm text-slate-900 focus:border-[#0f172a] outline-none resize-none"
               />
             </div>
 
@@ -268,12 +324,14 @@ export function ProductForm({ initialProduct, isNew = false }: ProductFormProps)
               <label className="block text-sm font-medium text-slate-700 mb-1.5">
                 Modo de uso y dilución (opcional)
               </label>
-              <textarea
+              <AutoResizeTextarea
                 rows={2}
                 value={modoDeUso}
-                onChange={(e) => setModoDeUso(e.target.value)}
+                onChange={(e) => {
+                  setModoDeUso(e.target.value);
+                  markDirty();
+                }}
                 placeholder="Indicación breve de cómo aplicarlo o diluirlo..."
-                className="w-full px-3.5 py-2 rounded-md border border-slate-300 text-sm text-slate-900 focus:border-[#0f172a] outline-none resize-none"
               />
             </div>
 
@@ -281,12 +339,14 @@ export function ProductForm({ initialProduct, isNew = false }: ProductFormProps)
               <label className="block text-sm font-medium text-slate-700 mb-1.5">
                 Superficies recomendadas (opcional)
               </label>
-              <input
-                type="text"
+              <AutoResizeTextarea
+                rows={2}
                 value={superficiesAptas}
-                onChange={(e) => setSuperficiesAptas(e.target.value)}
+                onChange={(e) => {
+                  setSuperficiesAptas(e.target.value);
+                  markDirty();
+                }}
                 placeholder="Ej: Pisos cerámicos, piletas, azulejos"
-                className="w-full px-3.5 py-2 rounded-md border border-slate-300 text-sm text-slate-900 focus:border-[#0f172a] outline-none"
               />
             </div>
 
@@ -294,39 +354,71 @@ export function ProductForm({ initialProduct, isNew = false }: ProductFormProps)
               <label className="block text-sm font-medium text-slate-700 mb-1.5">
                 Precauciones (opcional)
               </label>
-              <input
-                type="text"
+              <AutoResizeTextarea
+                rows={2}
                 value={advertencias}
-                onChange={(e) => setAdvertencias(e.target.value)}
+                onChange={(e) => {
+                  setAdvertencias(e.target.value);
+                  markDirty();
+                }}
                 placeholder="Ej: No mezclar con ácidos ni amoníaco"
-                className="w-full px-3.5 py-2 rounded-md border border-slate-300 text-sm text-slate-900 focus:border-[#0f172a] outline-none"
               />
             </div>
           </div>
         </section>
 
-        {/* SECCIÓN 2: FOTOS */}
+        {/* SECCIÓN 2: FOTOS (Principal indicada + Reordenar + Enlace avanzado) */}
         <section className="bg-white rounded-lg border border-slate-200 p-6 space-y-4">
-          <h2 className="text-base font-semibold text-slate-900 pb-3 border-b border-slate-100">
-            Fotos
-          </h2>
+          <div>
+            <h2 className="text-base font-semibold text-slate-900">Fotos</h2>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Formato JPG, PNG o WebP. Tamaño recomendado: 800 × 800 px (máximo 2 MB).
+            </p>
+          </div>
 
-          <div className="flex flex-wrap gap-4">
+          <div className="flex flex-wrap gap-4 pt-1">
             {imagenes.map((img, idx) => (
-              <div
-                key={idx}
-                className="relative w-24 h-24 rounded-md border border-slate-200 bg-slate-50 overflow-hidden group"
-              >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={img} alt={nombre} className="w-full h-full object-cover" />
-                <button
-                  type="button"
-                  onClick={() => handleRemoveImage(idx)}
-                  className="absolute top-1 right-1 p-1 rounded-md bg-slate-900/80 text-white hover:bg-red-600 transition-colors"
-                  aria-label="Quitar foto"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
+              <div key={`${img}-${idx}`} className="flex flex-col items-center gap-1.5">
+                <div className="relative w-24 h-24 rounded-md border border-slate-200 bg-slate-50 overflow-hidden">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={img} alt={nombre} className="w-full h-full object-cover" />
+                  {idx === 0 && (
+                    <span className="absolute bottom-1 left-1 px-1.5 py-0.5 rounded bg-[#0f172a]/85 text-white text-[10px] font-medium">
+                      Principal
+                    </span>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => handleRemoveImage(idx)}
+                    className="absolute top-1 right-1 p-1 rounded-md bg-slate-900/80 text-white hover:bg-red-600 transition-colors"
+                    aria-label="Quitar foto"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+
+                {imagenes.length > 1 && (
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      disabled={idx === 0}
+                      onClick={() => handleMoveImage(idx, -1)}
+                      className="p-1 rounded border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-30"
+                      title="Mover a la izquierda"
+                    >
+                      <ChevronLeft className="w-3 h-3" />
+                    </button>
+                    <button
+                      type="button"
+                      disabled={idx === imagenes.length - 1}
+                      onClick={() => handleMoveImage(idx, 1)}
+                      className="p-1 rounded border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-30"
+                      title="Mover a la derecha"
+                    >
+                      <ChevronRight className="w-3 h-3" />
+                    </button>
+                  </div>
+                )}
               </div>
             ))}
 
@@ -337,22 +429,27 @@ export function ProductForm({ initialProduct, isNew = false }: ProductFormProps)
             </label>
           </div>
 
-          <div className="flex items-center gap-2 max-w-md pt-2">
-            <input
-              type="text"
-              value={nuevaImagenUrl}
-              onChange={(e) => setNuevaImagenUrl(e.target.value)}
-              placeholder="O pegá el enlace de una imagen..."
-              className="flex-1 px-3 py-2 rounded-md border border-slate-300 text-xs text-slate-800 focus:border-[#0f172a] outline-none"
-            />
-            <button
-              type="button"
-              onClick={handleAddImageUrl}
-              className="px-3 py-2 rounded-md border border-slate-300 bg-white hover:bg-slate-50 text-xs font-medium text-slate-700"
-            >
-              Agregar
-            </button>
-          </div>
+          <details className="pt-2 text-xs text-slate-600">
+            <summary className="cursor-pointer font-medium text-slate-700 hover:text-slate-900 select-none">
+              Agregar foto desde enlace (avanzado)
+            </summary>
+            <div className="flex items-center gap-2 max-w-md mt-2.5">
+              <input
+                type="text"
+                value={nuevaImagenUrl}
+                onChange={(e) => setNuevaImagenUrl(e.target.value)}
+                placeholder="https://..."
+                className="flex-1 px-3.5 py-2 rounded-md border border-slate-300 text-sm text-slate-800 focus:border-[#0f172a] outline-none"
+              />
+              <button
+                type="button"
+                onClick={handleAddImageUrl}
+                className="px-3.5 py-2 rounded-md border border-slate-300 bg-white hover:bg-slate-50 text-sm font-medium text-slate-700"
+              >
+                Agregar
+              </button>
+            </div>
+          </details>
         </section>
 
         {/* SECCIÓN 3: PRECIO Y STOCK */}
@@ -361,11 +458,10 @@ export function ProductForm({ initialProduct, isNew = false }: ProductFormProps)
             Precio y stock
           </h2>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
             <div>
               <label className="block text-sm font-medium text-slate-700 mb-1.5">
-                Precio de venta{" "}
-                {sincronizado && <span className="text-xs text-slate-500">(Sincronizado)</span>}
+                Precio de venta
               </label>
               <div className="relative">
                 <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-slate-500">
@@ -373,82 +469,94 @@ export function ProductForm({ initialProduct, isNew = false }: ProductFormProps)
                 </span>
                 <input
                   type="number"
-                  value={precioSistema}
+                  min={0}
+                  value={precioInput}
                   readOnly={sincronizado}
-                  onChange={(e) => setPrecioSistema(Number(e.target.value))}
-                  className={`w-full pl-7 pr-3.5 py-2 rounded-md border text-sm font-medium ${
+                  placeholder="Ingresá el precio"
+                  onChange={(e) => {
+                    setPrecioInput(e.target.value);
+                    markDirty();
+                  }}
+                  className={`w-full pl-7 py-2 rounded-md border text-sm font-medium ${
                     sincronizado
-                      ? "bg-slate-100 border-slate-200 text-slate-700 cursor-not-allowed"
-                      : "bg-white border-slate-300 text-slate-900 focus:border-[#0f172a] outline-none"
+                      ? "pr-9 bg-slate-100 border-slate-200 text-slate-700 cursor-not-allowed"
+                      : "pr-3.5 bg-white border-slate-300 text-slate-900 focus:border-[#0f172a] outline-none"
                   }`}
                 />
+                {sincronizado && (
+                  <Lock className="w-3.5 h-3.5 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2" />
+                )}
               </div>
-              {sincronizado && (
-                <p className="text-xs text-slate-500 mt-1">
-                  Valor actual: {money(precioSistema)} (viene del sistema local).
+              {parsedPrice <= 0 && (
+                <p className="text-xs text-amber-700 mt-1">
+                  Sin un precio mayor a $ 0, el producto queda oculto en la tienda.
                 </p>
               )}
             </div>
 
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1.5">
-                Precio promocional en web
-              </label>
-              <div className="relative">
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-slate-500">
-                  $
-                </span>
-                <input
-                  type="number"
-                  value={precioOferta}
-                  onChange={(e) => setPrecioOferta(e.target.value)}
-                  placeholder="Sin oferta"
-                  className="w-full pl-7 pr-3.5 py-2 rounded-md border border-slate-300 text-sm text-slate-900 focus:border-[#0f172a] outline-none"
-                />
+            {!esSuelto && (
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1.5">
+                  Stock físico
+                </label>
+                <div className="relative">
+                  <input
+                    type="number"
+                    min={0}
+                    value={stockInput}
+                    readOnly={sincronizado}
+                    placeholder="Sin stock cargado"
+                    onChange={(e) => {
+                      setStockInput(e.target.value);
+                      markDirty();
+                    }}
+                    className={`w-full px-3.5 py-2 rounded-md border text-sm ${
+                      sincronizado
+                        ? "pr-9 bg-slate-100 border-slate-200 text-slate-700 cursor-not-allowed"
+                        : "bg-white border-slate-300 text-slate-900 focus:border-[#0f172a] outline-none"
+                    }`}
+                  />
+                  {sincronizado && (
+                    <Lock className="w-3.5 h-3.5 text-slate-400 absolute right-3 top-1/2 -translate-y-1/2" />
+                  )}
+                </div>
+                {initialProduct?.stockSinDato && (
+                  <p className="text-xs text-amber-700 mt-1">
+                    Llegó sin dato válido de stock desde el local (se trata como Sin stock).
+                  </p>
+                )}
               </div>
-              <p className="text-xs text-slate-500 mt-1">
-                Dejalo vacío para cobrar el precio normal.
-              </p>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1.5">
-                Stock físico{" "}
-                {sincronizado && <span className="text-xs text-slate-500">(Sincronizado)</span>}
-              </label>
-              <input
-                type="number"
-                value={stock}
-                readOnly={sincronizado}
-                onChange={(e) => setStock(Number(e.target.value))}
-                className={`w-full px-3.5 py-2 rounded-md border text-sm ${
-                  sincronizado
-                    ? "bg-slate-100 border-slate-200 text-slate-700 cursor-not-allowed"
-                    : "bg-white border-slate-300 text-slate-900 focus:border-[#0f172a] outline-none"
-                }`}
-              />
-            </div>
+            )}
           </div>
 
-          <div className="pt-3 border-t border-slate-100 space-y-4">
+          {/* D.5: Descuento vigente informativo (sin campo de oferta individual) */}
+          {activeDiscount && (
+            <div className="p-3.5 rounded-md bg-slate-50 border border-slate-200 flex items-center justify-between gap-4 text-xs">
+              <div className="text-slate-700">
+                <span className="font-semibold text-slate-900">Descuento vigente:</span>{" "}
+                {activeDiscount.discount.nombre} — Precio final en tienda:{" "}
+                <strong className="text-slate-900">{money(activeDiscount.finalPrice)}</strong>
+              </div>
+              <Link
+                href="/admin/productos?tab=descuentos"
+                className="font-medium text-[#0f172a] hover:underline shrink-0"
+              >
+                Administrar descuentos
+              </Link>
+            </div>
+          )}
+
+          {/* D.3: Único toggle para producto suelto */}
+          <div className="pt-3 border-t border-slate-100">
             <AdminToggle
               checked={esSuelto}
               onChange={(val) => {
                 setEsSuelto(val);
-                if (val) setControlarStock(false);
+                markDirty();
               }}
-              label="Venta a granel / producto suelto"
-              description="Si está activo, el cliente puede comprarlo aunque el stock del sistema sea 0."
+              label="Es producto suelto"
+              description="Se prepara según disponibilidad en el local; no se controla stock en la tienda online."
             />
-
-            {!esSuelto && (
-              <AdminToggle
-                checked={controlarStock}
-                onChange={setControlarStock}
-                label="Frenar ventas cuando el stock llegue a 0"
-                description="Desactivalo si querés seguir recibiendo pedidos de este artículo aunque figure sin stock."
-              />
-            )}
           </div>
         </section>
 
@@ -457,9 +565,6 @@ export function ProductForm({ initialProduct, isNew = false }: ProductFormProps)
           <h2 className="text-base font-semibold text-slate-900 pb-3 border-b border-slate-100">
             Rubro y marca
           </h2>
-          <p className="text-xs text-slate-500 -mt-2">
-            Esta clasificación se administra en la tienda y no se modifica al sincronizar.
-          </p>
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
             <div>
@@ -469,6 +574,7 @@ export function ProductForm({ initialProduct, isNew = false }: ProductFormProps)
                 onChange={(e) => {
                   setRubroId(e.target.value);
                   setSubrubroId("");
+                  markDirty();
                 }}
                 className="w-full px-3.5 py-2 rounded-md border border-slate-300 text-sm text-slate-900 bg-white focus:border-[#0f172a] outline-none"
               >
@@ -485,7 +591,10 @@ export function ProductForm({ initialProduct, isNew = false }: ProductFormProps)
               <label className="block text-sm font-medium text-slate-700 mb-1.5">Subrubro</label>
               <select
                 value={subrubroId}
-                onChange={(e) => setSubrubroId(e.target.value)}
+                onChange={(e) => {
+                  setSubrubroId(e.target.value);
+                  markDirty();
+                }}
                 disabled={!rubroId || subrubrosDisponibles.length === 0}
                 className="w-full px-3.5 py-2 rounded-md border border-slate-300 text-sm text-slate-900 bg-white focus:border-[#0f172a] outline-none disabled:bg-slate-100 disabled:text-slate-400"
               >
@@ -502,7 +611,10 @@ export function ProductForm({ initialProduct, isNew = false }: ProductFormProps)
               <label className="block text-sm font-medium text-slate-700 mb-1.5">Marca</label>
               <select
                 value={marcaId}
-                onChange={(e) => setMarcaId(e.target.value)}
+                onChange={(e) => {
+                  setMarcaId(e.target.value);
+                  markDirty();
+                }}
                 className="w-full px-3.5 py-2 rounded-md border border-slate-300 text-sm text-slate-900 bg-white focus:border-[#0f172a] outline-none"
               >
                 <option value="">Sin marca</option>
@@ -523,20 +635,17 @@ export function ProductForm({ initialProduct, isNew = false }: ProductFormProps)
           </h2>
 
           <AdminToggle
-            checked={activo}
-            onChange={setActivo}
+            checked={parsedPrice > 0 ? activo : false}
+            onChange={(val) => {
+              setActivo(val);
+              markDirty();
+            }}
             label="Mostrar producto en la tienda"
-            description="Si lo desactivás, el producto queda oculto para los clientes pero sigue recibiendo actualizaciones de precio."
+            description="Si lo desactivás, queda oculto para los clientes pero sigue recibiendo actualizaciones de precio."
           />
 
-          {!isNew && initialProduct && (
-            <div className="pt-4 border-t border-slate-100 flex items-center justify-between gap-4">
-              <div>
-                <div className="text-sm font-medium text-slate-900">Eliminar producto</div>
-                <div className="text-xs text-slate-500">
-                  Quita el producto del catálogo de la tienda.
-                </div>
-              </div>
+          {!isNew && initialProduct && !sincronizado && (
+            <div className="pt-4 border-t border-slate-100 flex items-center justify-end">
               <button
                 type="button"
                 onClick={() => setShowDeleteConfirm(true)}
@@ -546,23 +655,31 @@ export function ProductForm({ initialProduct, isNew = false }: ProductFormProps)
               </button>
             </div>
           )}
+
+          {!isNew && sincronizado && (
+            <p className="text-xs text-slate-500 pt-3 border-t border-slate-100">
+              Los productos sincronizados desde el sistema del local no se eliminan: podés
+              ocultarlos con el interruptor superior.
+            </p>
+          )}
         </section>
 
         {/* Barra inferior fija de guardado */}
         <div className="fixed bottom-0 left-0 lg:left-60 right-0 bg-white border-t border-slate-200 px-6 sm:px-8 py-3.5 z-30">
           <div className="max-w-4xl mx-auto flex items-center justify-end gap-3">
-            <Link
-              href="/admin/productos"
+            <button
+              type="button"
+              onClick={handleCancelClick}
               className="px-4 py-2 rounded-md border border-slate-300 text-slate-700 hover:bg-slate-50 text-sm font-medium transition-colors"
             >
               Cancelar
-            </Link>
+            </button>
             <button
               type="submit"
               disabled={isSaving}
               className="px-5 py-2 rounded-md bg-[#06b6d4] hover:bg-[#0891b2] text-white text-sm font-medium transition-colors disabled:opacity-60"
             >
-              {isSaving ? "Guardando..." : "Guardar cambios"}
+              {isSaving ? "Guardando..." : isNew ? "Guardar producto" : "Guardar cambios"}
             </button>
           </div>
         </div>
@@ -577,6 +694,39 @@ export function ProductForm({ initialProduct, isNew = false }: ProductFormProps)
         isDeleting={isDeleting}
         warningText="Si solo querés que no aparezca temporalmente en el catálogo, te recomendamos ocultarlo con el interruptor de visibilidad."
       />
+
+      {/* Confirmación al cancelar con cambios sin guardar */}
+      {showCancelConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div
+            onClick={() => setShowCancelConfirm(false)}
+            className="fixed inset-0 bg-slate-950/40"
+            aria-hidden="true"
+          />
+          <div className="relative bg-white rounded-lg border border-slate-200 max-w-md w-full p-6 z-10">
+            <h3 className="text-lg font-semibold text-slate-900">Cambios sin guardar</h3>
+            <p className="text-sm text-slate-600 mt-2">
+              Tenés modificaciones sin guardar. ¿Seguro que querés salir sin guardar?
+            </p>
+            <div className="mt-6 flex items-center justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setShowCancelConfirm(false)}
+                className="px-4 py-2 rounded-md border border-slate-300 text-slate-700 hover:bg-slate-50 text-sm font-medium"
+              >
+                Seguir editando
+              </button>
+              <button
+                type="button"
+                onClick={() => router.push("/admin/productos")}
+                className="px-4 py-2 rounded-md bg-[#0f172a] hover:bg-[#1e293b] text-white text-sm font-medium"
+              >
+                Salir sin guardar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

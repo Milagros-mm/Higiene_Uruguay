@@ -1,7 +1,7 @@
 "use client";
 
-import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
-import { CheckCircle2, AlertTriangle, X, Info } from "lucide-react";
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from "react";
+import { CheckCircle2, AlertTriangle, X, Info, Package } from "lucide-react";
 import { allProducts } from "@/frontend/mock/mock-data";
 import { STORE } from "@/frontend/utils/store";
 
@@ -51,16 +51,16 @@ export interface AdminProduct {
   superficiesAptas?: string;
   presentacion?: string;
   precioSistema: number;
-  precioOferta?: number;
   stock: number;
+  stockSinDato?: boolean;
   esSuelto: boolean;
-  controlarStock: boolean;
   rubroId: string;
   subrubroId?: string;
   marcaId?: string;
   imagenes: string[];
   activo: boolean;
   sincronizado: boolean;
+  posibleDuplicadoSku?: string;
   ventas30d: number;
   consultas30d: number;
 }
@@ -77,7 +77,15 @@ export interface AdminDiscount {
   activo: boolean;
 }
 
-export type OrderStatus = "Nuevo" | "En preparación" | "Entregado" | "Cancelado";
+export type OrderStatus =
+  | "Pendiente"
+  | "Confirmado"
+  | "En preparación"
+  | "Listo para retirar o enviar"
+  | "Entregado"
+  | "Cancelado";
+
+export type PaymentStatus = "Pendiente" | "Confirmado";
 
 export interface AdminOrderItem {
   productId: string;
@@ -85,6 +93,8 @@ export interface AdminOrderItem {
   presentacion?: string;
   cantidad: number;
   precioUnitario: number;
+  descuentoAplicado?: number;
+  esSuelto?: boolean;
 }
 
 export interface AdminOrder {
@@ -98,9 +108,15 @@ export interface AdminOrder {
   clienteEmail?: string;
   modalidadEntrega: "Retiro en local" | "Envío a domicilio";
   direccionEntrega?: string;
-  metodoPago: "Transferencia bancaria" | "Efectivo";
+  metodoPago: string;
+  pagoEstado: PaymentStatus;
   notas?: string;
+  notaAjusteInterno?: string;
+  preferenciaSuelto?: "Consultar reemplazo" | "Quitar del pedido";
   items: AdminOrderItem[];
+  subtotal: number;
+  descuentoProductos: number;
+  descuentoCarrito: number;
   total: number;
   estado: OrderStatus;
 }
@@ -124,14 +140,21 @@ export interface AdminInquiry {
   respondida: boolean;
 }
 
+export interface AdminSyncNotice {
+  productId?: string;
+  productName?: string;
+  mensaje: string;
+}
+
 export interface AdminSyncLog {
   id: string;
   fecha: string;
-  resultado: "Completada" | "Con observaciones" | "No completada";
+  resultado: "Completada" | "Con avisos" | "No completada";
   nuevos: number;
   actualizados: number;
-  conError: number;
-  detalleError?: string;
+  conAviso: number;
+  detalleAviso?: string;
+  avisosProductos?: AdminSyncNotice[];
 }
 
 export interface AdminBankAccount {
@@ -141,6 +164,12 @@ export interface AdminBankAccount {
   alias: string;
   cbu: string;
   activa: boolean;
+}
+
+export interface AdminPaymentMethodItem {
+  id: string;
+  nombre: string;
+  habilitado: boolean;
 }
 
 export interface AdminPanelUser {
@@ -164,9 +193,12 @@ export interface AdminStoreConfig {
   envioDomicilioHabilitado: boolean;
   retiroLocalHabilitado: boolean;
   costoEnvioBase: number;
+  envioGratisDesde: number;
   aclaracionEnvio: string;
   pagoTransferenciaHabilitado: boolean;
   pagoEfectivoHabilitado: boolean;
+  mediosPago: AdminPaymentMethodItem[];
+  aclaracionPago: string;
   cuentasBancarias: AdminBankAccount[];
   usuariosPanel: AdminPanelUser[];
 }
@@ -217,6 +249,8 @@ interface AdminCatalogContextType {
     data: Omit<AdminProduct, "id" | "ventas30d" | "consultas30d"> & { id?: string },
   ) => Promise<void>;
   deleteProducto: (id: string) => Promise<void>;
+  markProductsAsSuelto: (productIds: string[]) => void;
+  resolveDuplicateSync: (productId: string, action: "vincular" | "separar") => void;
 
   // Descuentos
   saveDescuento: (data: Omit<AdminDiscount, "id"> & { id?: string }) => Promise<void>;
@@ -225,6 +259,8 @@ interface AdminCatalogContextType {
 
   // Pedidos y Consultas
   updatePedidoStatus: (id: string, estado: OrderStatus) => void;
+  updatePedidoPagoStatus: (id: string, pagoEstado: PaymentStatus) => void;
+  updatePedidoAdjustment: (id: string, items: AdminOrderItem[], notaAjusteInterno: string) => void;
   toggleConsultaRespondida: (id: string) => void;
 
   // Sincronización
@@ -480,10 +516,9 @@ const INITIAL_PRODUCTOS: AdminProduct[] = [
       superficiesAptas: p.suitableSurfaces || "",
       presentacion: p.bulkPresentation || "Unidad",
       precioSistema: p.originalPrice || p.price,
-      precioOferta: p.originalPrice ? p.price : undefined,
       stock: stockValues[idx % stockValues.length],
+      stockSinDato: Boolean(p.isBulk),
       esSuelto: Boolean(p.isBulk),
-      controlarStock: !p.isBulk,
       rubroId: mapped.rubroId,
       subrubroId: mapped.subrubroId,
       marcaId: p.brand ? BRAND_NAME_TO_ID[p.brand] : "mar-01",
@@ -494,7 +529,7 @@ const INITIAL_PRODUCTOS: AdminProduct[] = [
       consultas30d: consultasValues[idx % consultasValues.length],
     };
   }),
-  // Producto recién sincronizado que genera alertas reales (sin foto y sin rubro asignado)
+  // Producto recién sincronizado que genera alertas agrupadas (sin foto y sin rubro)
   {
     id: "p17",
     sku: "010017",
@@ -505,8 +540,8 @@ const INITIAL_PRODUCTOS: AdminProduct[] = [
     presentacion: "Bidón 5 Litros",
     precioSistema: 4380,
     stock: 0,
+    stockSinDato: true,
     esSuelto: false,
-    controlarStock: true,
     rubroId: "",
     subrubroId: undefined,
     marcaId: "mar-01",
@@ -599,6 +634,7 @@ const INITIAL_PEDIDOS: AdminOrder[] = [
     modalidadEntrega: "Envío a domicilio",
     direccionEntrega: "9 de Julio 842, Concepción del Uruguay",
     metodoPago: "Transferencia bancaria",
+    pagoEstado: "Pendiente",
     notas: "Timbre 2B. Entregar por la tarde.",
     items: [
       {
@@ -614,10 +650,14 @@ const INITIAL_PEDIDOS: AdminOrder[] = [
         presentacion: "Bidón 5 Litros",
         cantidad: 1,
         precioUnitario: 6800,
+        descuentoAplicado: 1020,
       },
     ],
+    subtotal: 14820,
+    descuentoProductos: 1020,
+    descuentoCarrito: 0,
     total: 13800,
-    estado: "Nuevo",
+    estado: "Pendiente",
   },
   {
     id: "ord-1044",
@@ -631,6 +671,7 @@ const INITIAL_PEDIDOS: AdminOrder[] = [
     modalidadEntrega: "Envío a domicilio",
     direccionEntrega: "Av. Paysandú 1240, Concepción del Uruguay",
     metodoPago: "Transferencia bancaria",
+    pagoEstado: "Confirmado",
     notas: "Ingresar por portón lateral de proveedores.",
     items: [
       {
@@ -648,8 +689,11 @@ const INITIAL_PEDIDOS: AdminOrder[] = [
         precioUnitario: 11500,
       },
     ],
-    total: 44000,
-    estado: "Nuevo",
+    subtotal: 44000,
+    descuentoProductos: 0,
+    descuentoCarrito: 4400,
+    total: 39600,
+    estado: "Pendiente",
   },
   {
     id: "ord-1043",
@@ -662,6 +706,8 @@ const INITIAL_PEDIDOS: AdminOrder[] = [
     clienteEmail: "luciafernandez.cdelu@hotmail.com",
     modalidadEntrega: "Retiro en local",
     metodoPago: "Efectivo",
+    pagoEstado: "Pendiente",
+    preferenciaSuelto: "Consultar reemplazo",
     items: [
       {
         productId: "p7",
@@ -669,6 +715,7 @@ const INITIAL_PEDIDOS: AdminOrder[] = [
         presentacion: "Bidón 5 Litros (Fraccionado)",
         cantidad: 2,
         precioUnitario: 3200,
+        esSuelto: true,
       },
       {
         productId: "p15",
@@ -676,8 +723,12 @@ const INITIAL_PEDIDOS: AdminOrder[] = [
         presentacion: "Bidón 5 Litros (Fraccionado)",
         cantidad: 1,
         precioUnitario: 2400,
+        esSuelto: true,
       },
     ],
+    subtotal: 8800,
+    descuentoProductos: 0,
+    descuentoCarrito: 0,
     total: 8800,
     estado: "En preparación",
   },
@@ -693,6 +744,7 @@ const INITIAL_PEDIDOS: AdminOrder[] = [
     modalidadEntrega: "Envío a domicilio",
     direccionEntrega: "Costanera Norte s/n, Concepción del Uruguay",
     metodoPago: "Transferencia bancaria",
+    pagoEstado: "Confirmado",
     items: [
       {
         productId: "p1",
@@ -709,6 +761,9 @@ const INITIAL_PEDIDOS: AdminOrder[] = [
         precioUnitario: 8900,
       },
     ],
+    subtotal: 47700,
+    descuentoProductos: 0,
+    descuentoCarrito: 0,
     total: 47700,
     estado: "Entregado",
   },
@@ -723,6 +778,7 @@ const INITIAL_PEDIDOS: AdminOrder[] = [
     clienteEmail: "valesosa@gmail.com",
     modalidadEntrega: "Retiro en local",
     metodoPago: "Efectivo",
+    pagoEstado: "Confirmado",
     items: [
       {
         productId: "p14",
@@ -732,6 +788,9 @@ const INITIAL_PEDIDOS: AdminOrder[] = [
         precioUnitario: 14500,
       },
     ],
+    subtotal: 14500,
+    descuentoProductos: 0,
+    descuentoCarrito: 0,
     total: 14500,
     estado: "Entregado",
   },
@@ -745,6 +804,7 @@ const INITIAL_PEDIDOS: AdminOrder[] = [
     clienteTelefono: "03442 15-412398",
     modalidadEntrega: "Retiro en local",
     metodoPago: "Transferencia bancaria",
+    pagoEstado: "Pendiente",
     items: [
       {
         productId: "p5",
@@ -754,6 +814,9 @@ const INITIAL_PEDIDOS: AdminOrder[] = [
         precioUnitario: 6900,
       },
     ],
+    subtotal: 6900,
+    descuentoProductos: 0,
+    descuentoCarrito: 0,
     total: 6900,
     estado: "Cancelado",
   },
@@ -789,17 +852,24 @@ const INITIAL_SYNC_LOGS: AdminSyncLog[] = [
     resultado: "Completada",
     nuevos: 1,
     actualizados: 16,
-    conError: 0,
+    conAviso: 0,
   },
   {
     id: "sync-02",
     fecha: "22/11/2026 08:30",
-    resultado: "Con observaciones",
+    resultado: "Con avisos",
     nuevos: 0,
     actualizados: 15,
-    conError: 1,
-    detalleError:
-      "1 artículo en el sistema del local tenía el precio de venta vacío y se mantuvo el último precio válido en la tienda.",
+    conAviso: 1,
+    detalleAviso:
+      "Lavandina Premium 5L llegó sin stock válido y se mantuvo como Sin stock hasta confirmarse si es suelto.",
+    avisosProductos: [
+      {
+        productId: "p17",
+        productName: "Lavandina Premium 5L",
+        mensaje: "Llegó sin stock válido (nulo o negativo).",
+      },
+    ],
   },
   {
     id: "sync-01",
@@ -807,7 +877,7 @@ const INITIAL_SYNC_LOGS: AdminSyncLog[] = [
     resultado: "Completada",
     nuevos: 2,
     actualizados: 14,
-    conError: 0,
+    conAviso: 0,
   },
 ];
 
@@ -824,10 +894,16 @@ const INITIAL_STORE_CONFIG: AdminStoreConfig = {
   envioDomicilioHabilitado: true,
   retiroLocalHabilitado: true,
   costoEnvioBase: 1500,
-  aclaracionEnvio:
-    "Envíos sin cargo en Concepción del Uruguay superando el monto promocional vigente.",
+  envioGratisDesde: 25000,
+  aclaracionEnvio: "Envíos sin cargo en Concepción del Uruguay superando los $ 25.000.",
   pagoTransferenciaHabilitado: true,
   pagoEfectivoHabilitado: true,
+  mediosPago: [
+    { id: "efectivo", nombre: "Efectivo", habilitado: true },
+    { id: "transferencia", nombre: "Transferencia bancaria", habilitado: true },
+    { id: "debito", nombre: "Tarjeta de débito (en local)", habilitado: false },
+  ],
+  aclaracionPago: "El pago se coordina directamente por WhatsApp una vez confirmado el pedido.",
   cuentasBancarias: [
     {
       id: "bank-01",
@@ -894,17 +970,38 @@ function loadInitialState() {
     const saved = localStorage.getItem(STORAGE_KEY);
     if (saved) {
       const parsed = JSON.parse(saved);
+      const migratedOrders: AdminOrder[] = Array.isArray(parsed.pedidos)
+        ? parsed.pedidos.map((ord: Omit<AdminOrder, "estado"> & { estado: string }) => ({
+            ...ord,
+            estado: (ord.estado === "Nuevo" ? "Pendiente" : ord.estado) as OrderStatus,
+            pagoEstado: ord.pagoEstado || "Pendiente",
+            subtotal: typeof ord.subtotal === "number" ? ord.subtotal : ord.total,
+            descuentoProductos: ord.descuentoProductos || 0,
+            descuentoCarrito: ord.descuentoCarrito || 0,
+          }))
+        : defaults.pedidos;
+
+      const migratedConfig: AdminStoreConfig = parsed.storeConfig
+        ? {
+            ...defaults.storeConfig,
+            ...parsed.storeConfig,
+            mediosPago: Array.isArray(parsed.storeConfig.mediosPago)
+              ? parsed.storeConfig.mediosPago
+              : defaults.storeConfig.mediosPago,
+          }
+        : defaults.storeConfig;
+
       return {
         rubros: Array.isArray(parsed.rubros) ? parsed.rubros : defaults.rubros,
         subrubros: Array.isArray(parsed.subrubros) ? parsed.subrubros : defaults.subrubros,
         marcas: Array.isArray(parsed.marcas) ? parsed.marcas : defaults.marcas,
         productos: Array.isArray(parsed.productos) ? parsed.productos : defaults.productos,
         descuentos: Array.isArray(parsed.descuentos) ? parsed.descuentos : defaults.descuentos,
-        pedidos: Array.isArray(parsed.pedidos) ? parsed.pedidos : defaults.pedidos,
+        pedidos: migratedOrders,
         clientes: Array.isArray(parsed.clientes) ? parsed.clientes : defaults.clientes,
         consultas: Array.isArray(parsed.consultas) ? parsed.consultas : defaults.consultas,
         syncLogs: Array.isArray(parsed.syncLogs) ? parsed.syncLogs : defaults.syncLogs,
-        storeConfig: parsed.storeConfig ? parsed.storeConfig : defaults.storeConfig,
+        storeConfig: migratedConfig,
       };
     }
   } catch {
@@ -914,24 +1011,41 @@ function loadInitialState() {
 }
 
 export function AdminCatalogProvider({ children }: { children: React.ReactNode }) {
-  const [rubros, setRubros] = useState<AdminRubro[]>(() => loadInitialState().rubros);
-  const [subrubros, setSubrubros] = useState<AdminSubrubro[]>(() => loadInitialState().subrubros);
-  const [marcas, setMarcas] = useState<AdminMarca[]>(() => loadInitialState().marcas);
-  const [productos, setProductos] = useState<AdminProduct[]>(() => loadInitialState().productos);
-  const [descuentos, setDescuentos] = useState<AdminDiscount[]>(
-    () => loadInitialState().descuentos,
-  );
-  const [pedidos, setPedidos] = useState<AdminOrder[]>(() => loadInitialState().pedidos);
-  const [clientes] = useState<AdminCustomer[]>(() => loadInitialState().clientes);
-  const [consultas, setConsultas] = useState<AdminInquiry[]>(() => loadInitialState().consultas);
-  const [syncLogs, setSyncLogs] = useState<AdminSyncLog[]>(() => loadInitialState().syncLogs);
-  const [storeConfig, setStoreConfig] = useState<AdminStoreConfig>(
-    () => loadInitialState().storeConfig,
-  );
+  const [rubros, setRubros] = useState<AdminRubro[]>(INITIAL_RUBROS);
+  const [subrubros, setSubrubros] = useState<AdminSubrubro[]>(INITIAL_SUBRUBROS);
+  const [marcas, setMarcas] = useState<AdminMarca[]>(INITIAL_MARCAS);
+  const [productos, setProductos] = useState<AdminProduct[]>(INITIAL_PRODUCTOS);
+  const [descuentos, setDescuentos] = useState<AdminDiscount[]>(INITIAL_DESCUENTOS);
+  const [pedidos, setPedidos] = useState<AdminOrder[]>(INITIAL_PEDIDOS);
+  const [clientes, setClientes] = useState<AdminCustomer[]>(INITIAL_CLIENTES);
+  const [consultas, setConsultas] = useState<AdminInquiry[]>(INITIAL_CONSULTAS);
+  const [syncLogs, setSyncLogs] = useState<AdminSyncLog[]>(INITIAL_SYNC_LOGS);
+  const [storeConfig, setStoreConfig] = useState<AdminStoreConfig>(INITIAL_STORE_CONFIG);
+  const [isHydrated, setIsHydrated] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
+  const lastToastRef = useRef<{ title: string; time: number } | null>(null);
 
   useEffect(() => {
+    const rafId = requestAnimationFrame(() => {
+      const loaded = loadInitialState();
+      setRubros(loaded.rubros);
+      setSubrubros(loaded.subrubros);
+      setMarcas(loaded.marcas);
+      setProductos(loaded.productos);
+      setDescuentos(loaded.descuentos);
+      setPedidos(loaded.pedidos);
+      setClientes(loaded.clientes);
+      setConsultas(loaded.consultas);
+      setSyncLogs(loaded.syncLogs);
+      setStoreConfig(loaded.storeConfig);
+      setIsHydrated(true);
+    });
+    return () => cancelAnimationFrame(rafId);
+  }, []);
+
+  useEffect(() => {
+    if (!isHydrated) return;
     try {
       localStorage.setItem(
         STORAGE_KEY,
@@ -952,6 +1066,7 @@ export function AdminCatalogProvider({ children }: { children: React.ReactNode }
       // Ignorar errores de cuota de almacenamiento
     }
   }, [
+    isHydrated,
     rubros,
     subrubros,
     marcas,
@@ -966,8 +1081,21 @@ export function AdminCatalogProvider({ children }: { children: React.ReactNode }
 
   const showToast = useCallback(
     (title: string, type: "success" | "info" | "warning" = "success", onUndo?: () => void) => {
-      const id = `${Date.now()}-${Math.random()}`;
-      setToasts((prev) => [...prev, { id, title, type, onUndo }]);
+      const now = Date.now();
+      if (
+        lastToastRef.current &&
+        lastToastRef.current.title === title &&
+        now - lastToastRef.current.time < 600
+      ) {
+        return;
+      }
+      lastToastRef.current = { title, time: now };
+
+      const id = `${now}-${Math.random()}`;
+      setToasts((prev) => {
+        if (prev.some((t) => t.title === title)) return prev;
+        return [...prev, { id, title, type, onUndo }];
+      });
       setTimeout(() => {
         setToasts((prev) => prev.filter((t) => t.id !== id));
       }, 4500);
@@ -1160,6 +1288,10 @@ export function AdminCatalogProvider({ children }: { children: React.ReactNode }
     data: Omit<AdminProduct, "id" | "ventas30d" | "consultas30d"> & { id?: string },
   ) => {
     await new Promise((resolve) => setTimeout(resolve, 300));
+    const hasValidPrice = Number(data.precioSistema) > 0;
+    const finalActivo = hasValidPrice ? data.activo : false;
+    const normalizedStock = data.esSuelto ? 0 : Math.max(0, Number(data.stock) || 0);
+
     if (data.id) {
       setProductos((prev) =>
         prev.map((p) =>
@@ -1167,6 +1299,9 @@ export function AdminCatalogProvider({ children }: { children: React.ReactNode }
             ? {
                 ...p,
                 ...data,
+                stock: normalizedStock,
+                stockSinDato: data.esSuelto ? false : data.stockSinDato,
+                activo: finalActivo,
                 id: p.id,
                 ventas30d: p.ventas30d,
                 consultas30d: p.consultas30d,
@@ -1174,16 +1309,27 @@ export function AdminCatalogProvider({ children }: { children: React.ReactNode }
             : p,
         ),
       );
-      showToast("Producto guardado");
+      showToast(
+        hasValidPrice
+          ? "Producto guardado"
+          : "Producto guardado como oculto porque no tiene precio válido",
+        hasValidPrice ? "success" : "warning",
+      );
     } else {
       const newProd: AdminProduct = {
         ...data,
+        stock: normalizedStock,
+        stockSinDato: false,
+        activo: finalActivo,
         id: `prod-${Date.now()}`,
         ventas30d: 0,
         consultas30d: 0,
       };
       setProductos((prev) => [newProd, ...prev]);
-      showToast("Producto creado");
+      showToast(
+        hasValidPrice ? "Producto creado" : "Producto guardado como oculto hasta que tenga precio",
+        hasValidPrice ? "success" : "warning",
+      );
     }
   };
 
@@ -1196,6 +1342,42 @@ export function AdminCatalogProvider({ children }: { children: React.ReactNode }
       target ? `Producto "${target.nombre}" eliminado` : "Producto eliminado",
       "warning",
       () => setProductos(previous),
+    );
+  };
+
+  const markProductsAsSuelto = (productIds: string[]) => {
+    if (productIds.length === 0) return;
+    setProductos((prev) =>
+      prev.map((p) =>
+        productIds.includes(p.id) ? { ...p, esSuelto: true, stock: 0, stockSinDato: false } : p,
+      ),
+    );
+    showToast(
+      productIds.length === 1
+        ? "Producto marcado como suelto"
+        : `${productIds.length} productos marcados como sueltos`,
+    );
+  };
+
+  const resolveDuplicateSync = (productId: string, action: "vincular" | "separar") => {
+    setProductos((prev) =>
+      prev.map((p) => {
+        if (p.id !== productId) return p;
+        if (action === "vincular") {
+          return {
+            ...p,
+            sincronizado: true,
+            sku: p.posibleDuplicadoSku || p.sku,
+            posibleDuplicadoSku: undefined,
+          };
+        }
+        return { ...p, posibleDuplicadoSku: undefined };
+      }),
+    );
+    showToast(
+      action === "vincular"
+        ? "Producto vinculado con el sistema del local"
+        : "Los productos se mantendrán separados",
     );
   };
 
@@ -1229,6 +1411,41 @@ export function AdminCatalogProvider({ children }: { children: React.ReactNode }
     showToast(`Estado del pedido actualizado a "${estado}"`);
   };
 
+  const updatePedidoPagoStatus = (id: string, pagoEstado: PaymentStatus) => {
+    setPedidos((prev) => prev.map((o) => (o.id === id ? { ...o, pagoEstado } : o)));
+    showToast(`Pago marcado como "${pagoEstado}"`);
+  };
+
+  const updatePedidoAdjustment = (
+    id: string,
+    items: AdminOrderItem[],
+    notaAjusteInterno: string,
+  ) => {
+    setPedidos((prev) =>
+      prev.map((o) => {
+        if (o.id !== id) return o;
+        const nuevoSubtotal = items.reduce(
+          (acc, item) => acc + item.cantidad * item.precioUnitario,
+          0,
+        );
+        const nuevoDescuentoProd = items.reduce(
+          (acc, item) => acc + (item.descuentoAplicado || 0),
+          0,
+        );
+        const nuevoTotal = Math.max(0, nuevoSubtotal - nuevoDescuentoProd - o.descuentoCarrito);
+        return {
+          ...o,
+          items,
+          subtotal: nuevoSubtotal,
+          descuentoProductos: nuevoDescuentoProd,
+          total: nuevoTotal,
+          notaAjusteInterno,
+        };
+      }),
+    );
+    showToast("Pedido actualizado correctamente");
+  };
+
   const toggleConsultaRespondida = (id: string) => {
     setConsultas((prev) =>
       prev.map((c) => (c.id === id ? { ...c, respondida: !c.respondida } : c)),
@@ -1248,16 +1465,32 @@ export function AdminCatalogProvider({ children }: { children: React.ReactNode }
       now.getHours(),
     )}:${pad(now.getMinutes())}`;
 
+    const sinStockValido = productos.filter((p) => !p.esSuelto && p.stockSinDato);
+    const avisosProductos: AdminSyncNotice[] = sinStockValido.map((p) => ({
+      productId: p.id,
+      productName: p.nombre,
+      mensaje: "Llegó sin stock válido (nulo o negativo).",
+    }));
+
     const newLog: AdminSyncLog = {
       id: `sync-${Date.now()}`,
       fecha: formattedDate,
-      resultado: "Completada",
+      resultado: avisosProductos.length > 0 ? "Con avisos" : "Completada",
       nuevos: 0,
       actualizados: productos.length,
-      conError: 0,
+      conAviso: avisosProductos.length,
+      detalleAviso:
+        avisosProductos.length > 0
+          ? `${avisosProductos.length} ${
+              avisosProductos.length === 1
+                ? "producto llegó sin stock válido."
+                : "productos llegaron sin stock válido."
+            }`
+          : undefined,
+      avisosProductos,
     };
 
-    setSyncLogs((prev) => [newLog, ...prev]);
+    setSyncLogs((prev) => [newLog, ...prev].slice(0, 20));
     setIsSyncing(false);
     showToast("Sincronización completada correctamente");
   };
@@ -1294,10 +1527,14 @@ export function AdminCatalogProvider({ children }: { children: React.ReactNode }
         deleteMarca,
         saveProducto,
         deleteProducto,
+        markProductsAsSuelto,
+        resolveDuplicateSync,
         saveDescuento,
         toggleDescuentoStatus,
         deleteDescuento,
         updatePedidoStatus,
+        updatePedidoPagoStatus,
+        updatePedidoAdjustment,
         toggleConsultaRespondida,
         runSyncNow,
         saveStoreConfig,
@@ -1383,13 +1620,13 @@ export function AdminTabs({
   activeTab,
   onChange,
 }: {
-  tabs: { id: string; label: string; count?: number }[];
+  tabs: { id: string; label: string }[];
   activeTab: string;
   onChange: (id: string) => void;
 }) {
   return (
-    <div className="border-b border-slate-200 mb-6 overflow-x-auto">
-      <nav className="flex items-center gap-6 -mb-px" aria-label="Pestañas de sección">
+    <div className="border-b border-slate-200 mb-6 overflow-x-auto overflow-y-hidden no-scrollbar">
+      <nav className="flex items-center gap-6" aria-label="Pestañas de sección">
         {tabs.map((tab) => {
           const isActive = tab.id === activeTab;
           return (
@@ -1397,29 +1634,183 @@ export function AdminTabs({
               key={tab.id}
               type="button"
               onClick={() => onChange(tab.id)}
-              className={`py-3 px-1 border-b-2 text-sm font-medium whitespace-nowrap transition-colors flex items-center gap-2 ${
+              className={`py-3 px-1 border-b-2 text-sm font-medium whitespace-nowrap transition-colors ${
                 isActive
                   ? "border-[#0f172a] text-[#0f172a] font-semibold"
                   : "border-transparent text-slate-500 hover:text-slate-800 hover:border-slate-300"
               }`}
             >
-              <span>{tab.label}</span>
-              {typeof tab.count === "number" && (
-                <span
-                  className={`text-xs px-2 py-0.5 rounded-md ${
-                    isActive
-                      ? "bg-slate-200/80 text-[#0f172a] font-semibold"
-                      : "bg-slate-100 text-slate-600"
-                  }`}
-                >
-                  {tab.count}
-                </span>
-              )}
+              {tab.label}
             </button>
           );
         })}
       </nav>
     </div>
+  );
+}
+
+/**
+ * Devuelve el estado calculado de un descuento: Vigente, Programado, Vencido u Oculto.
+ */
+export function getDiscountStatus(
+  discount: AdminDiscount,
+): "Vigente" | "Programado" | "Vencido" | "Oculto" {
+  if (!discount.activo) return "Oculto";
+  const today = new Date().toISOString().slice(0, 10);
+  if (discount.fechaInicio && discount.fechaInicio > today) return "Programado";
+  if (discount.fechaFin && discount.fechaFin < today) return "Vencido";
+  return "Vigente";
+}
+
+/**
+ * Busca si un producto tiene algún descuento vigente aplicado (directo o por rubro).
+ */
+export function getProductActiveDiscount(
+  product: Pick<AdminProduct, "id" | "rubroId" | "precioSistema">,
+  descuentos: AdminDiscount[],
+): { discount: AdminDiscount; finalPrice: number } | null {
+  const vigentes = descuentos.filter((d) => getDiscountStatus(d) === "Vigente");
+  const directo = vigentes.find((d) => d.aplicaA === "PRODUCTO" && d.targetId === product.id);
+  const porRubro = vigentes.find((d) => d.aplicaA === "RUBRO" && d.targetId === product.rubroId);
+  const chosen = directo || porRubro;
+  if (!chosen) return null;
+
+  const finalPrice =
+    chosen.tipo === "PORCENTAJE"
+      ? Math.max(0, Math.round(product.precioSistema * (1 - chosen.valor / 100)))
+      : Math.max(0, chosen.valor);
+
+  return { discount: chosen, finalPrice };
+}
+
+/**
+ * Formatea una fecha ISO (YYYY-MM-DD) o texto a formato día/mes/año (dd/mm/yyyy).
+ */
+export function formatDateAR(value: string): string {
+  if (!value) return "";
+  const isoMatch = value.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (isoMatch) {
+    return `${isoMatch[3]}/${isoMatch[2]}/${isoMatch[1]}`;
+  }
+  return value;
+}
+
+/**
+ * Miniatura de producto con marcador neutro cuando falta foto o falla la carga.
+ */
+export function ProductThumbnail({
+  src,
+  alt,
+  size = "md",
+}: {
+  src?: string;
+  alt: string;
+  size?: "sm" | "md";
+}) {
+  const [hasError, setHasError] = useState(false);
+  const dim = size === "sm" ? "w-10 h-10" : "w-11 h-11";
+
+  return (
+    <div
+      className={`${dim} rounded-md bg-slate-100 border border-slate-200 overflow-hidden flex items-center justify-center shrink-0`}
+    >
+      {src && !hasError ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={src}
+          alt={alt}
+          onError={() => setHasError(true)}
+          className="w-full h-full object-cover"
+        />
+      ) : (
+        <Package className="w-4 h-4 text-slate-400" />
+      )}
+    </div>
+  );
+}
+
+/**
+ * Etiqueta uniforme para el estado de un pedido en listado, detalle e historial.
+ */
+export function OrderStatusBadge({ status }: { status: string }) {
+  if (status === "Entregado") {
+    return (
+      <span className="inline-flex px-2.5 py-0.5 rounded-md text-xs font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
+        Entregado
+      </span>
+    );
+  }
+  if (status === "Nuevo" || status === "Pendiente") {
+    return (
+      <span className="inline-flex px-2.5 py-0.5 rounded-md text-xs font-medium bg-amber-50 text-amber-800 border border-amber-200">
+        {status}
+      </span>
+    );
+  }
+  if (
+    status === "En preparación" ||
+    status === "Confirmado" ||
+    status === "Listo para retirar o enviar"
+  ) {
+    return (
+      <span className="inline-flex px-2.5 py-0.5 rounded-md text-xs font-medium bg-blue-50 text-blue-800 border border-blue-200">
+        {status}
+      </span>
+    );
+  }
+  if (status === "Cancelado") {
+    return (
+      <span className="inline-flex px-2.5 py-0.5 rounded-md text-xs font-medium bg-red-50 text-red-700 border border-red-200">
+        Cancelado
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex px-2.5 py-0.5 rounded-md text-xs font-medium bg-slate-100 text-slate-700 border border-slate-200">
+      {status}
+    </span>
+  );
+}
+
+/**
+ * Área de texto que crece automáticamente según el contenido para evitar texto cortado.
+ */
+export function AutoResizeTextarea({
+  value,
+  onChange,
+  placeholder,
+  rows = 2,
+  className = "",
+}: {
+  value: string;
+  onChange: (e: React.ChangeEvent<HTMLTextAreaElement>) => void;
+  placeholder?: string;
+  rows?: number;
+  className?: string;
+}) {
+  const ref = useRef<HTMLTextAreaElement | null>(null);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+  }, [value]);
+
+  return (
+    <textarea
+      ref={ref}
+      rows={rows}
+      value={value}
+      onChange={(e) => {
+        const el = e.currentTarget;
+        el.style.height = "auto";
+        el.style.height = `${el.scrollHeight}px`;
+        onChange(e);
+      }}
+      placeholder={placeholder}
+      className={`w-full px-3.5 py-2 rounded-md border border-slate-300 text-sm text-slate-900 focus:border-[#0f172a] outline-none resize-none overflow-hidden ${className}`}
+    />
   );
 }
 

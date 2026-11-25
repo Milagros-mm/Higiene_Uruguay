@@ -1,9 +1,10 @@
-'use client';
+"use client";
 
-import React, { useState } from 'react';
-import Link from 'next/link';
-import Image from 'next/image';
-import { useCart } from '@/frontend/context/CartContext';
+import React, { useState, useEffect } from "react";
+import Link from "next/link";
+import Image from "next/image";
+import { useSession } from "next-auth/react";
+import { useCart } from "@/frontend/context/CartContext";
 import {
   STORE,
   money,
@@ -11,12 +12,12 @@ import {
   buildWhatsAppOrderMessage,
   VALID_COUPONS,
   CouponItem,
-} from '@/frontend/utils/store';
-import { CheckoutFormData } from '@/types';
-import { Header } from '@/frontend/components/layout/Header';
-import { PromoTopBar } from '@/frontend/components/layout/PromoTopBar';
-import { Footer } from '@/frontend/components/layout/Footer';
-import { WhatsAppFloatingBtn } from '@/frontend/components/layout/WhatsAppFloatingBtn';
+} from "@/frontend/utils/store";
+import { CheckoutFormData } from "@/types";
+import { Header } from "@/frontend/components/layout/Header";
+import { PromoTopBar } from "@/frontend/components/layout/PromoTopBar";
+import { Footer } from "@/frontend/components/layout/Footer";
+import { WhatsAppFloatingBtn } from "@/frontend/components/layout/WhatsAppFloatingBtn";
 import {
   ShoppingBag,
   Trash2,
@@ -35,46 +36,74 @@ import {
   Sparkles,
   FileText,
   X,
-} from 'lucide-react';
+} from "lucide-react";
 
 export default function CarritoCheckoutPage() {
   const {
     items,
     totalItems,
     subtotal,
+    hasInquiryItems,
     promoProgress,
     updateQuantity,
     removeItem,
     clearCart,
   } = useCart();
 
-  // Formulario de datos básicos del cliente (sin necesidad de cuenta)
+  const [orderNumber] = useState(() => String(Math.floor(1046 + Math.random() * 900)));
+
   const [formData, setFormData] = useState<CheckoutFormData>({
-    customerName: '',
-    phone: '',
-    deliveryType: 'PICKUP',
-    pickupTimeSlot: 'Mañana (8:30 a 12:30 hs)',
-    address: '',
-    cornerStreet: '',
+    orderNumber,
+    customerName: "",
+    phone: "",
+    deliveryType: "PICKUP",
+    pickupTimeSlot: "Mañana (8:30 a 12:30 hs)",
+    address: "",
+    cornerStreet: "",
     city: STORE.city,
-    notes: '',
-    paymentMethod: 'TRANSFERENCIA',
+    notes: "",
+    bulkPreference: "Consultar reemplazo",
+    paymentMethod: "TRANSFERENCIA",
   });
 
-  const [formErrors, setFormErrors] = useState<{ customerName?: string; phone?: string; address?: string }>({});
+  const { data: session } = useSession();
+
+  useEffect(() => {
+    const user = session?.user;
+    if (user) {
+      setFormData((prev) => ({
+        ...prev,
+        customerName: prev.customerName || user.name || "",
+        phone: prev.phone || (user as { phone?: string | null }).phone || "",
+      }));
+    }
+  }, [session]);
+
+  const [formErrors, setFormErrors] = useState<{
+    customerName?: string;
+    phone?: string;
+    address?: string;
+  }>({});
 
   // Manejo de cupones de descuento
-  const [couponInput, setCouponInput] = useState('');
+  const [couponInput, setCouponInput] = useState("");
   const [appliedCoupon, setAppliedCoupon] = useState<CouponItem | null>(null);
-  const [couponError, setCouponError] = useState('');
+  const [couponError, setCouponError] = useState("");
   const [showPreview, setShowPreview] = useState(false);
 
   // Calcular descuentos
+  const productDiscountTotal = items.reduce((acc, item) => {
+    if (item.product.originalPrice && item.product.originalPrice > item.price) {
+      return acc + (item.product.originalPrice - item.price) * item.quantity;
+    }
+    return acc;
+  }, 0);
+
   const spendDiscount = promoProgress.isReached ? promoProgress.discountAmount : 0;
 
   let couponDiscount = 0;
   if (appliedCoupon) {
-    if (appliedCoupon.type === 'PERCENT') {
+    if (appliedCoupon.type === "PERCENT") {
       couponDiscount = Math.round(subtotal * (appliedCoupon.value / 100));
     } else {
       couponDiscount = Math.min(subtotal, appliedCoupon.value);
@@ -86,35 +115,35 @@ export default function CarritoCheckoutPage() {
   // Aplicar cupón
   const handleApplyCoupon = (e: React.FormEvent) => {
     e.preventDefault();
-    setCouponError('');
+    setCouponError("");
     const code = couponInput.trim().toUpperCase();
 
     if (!code) return;
 
     if (VALID_COUPONS[code]) {
       setAppliedCoupon(VALID_COUPONS[code]);
-      setCouponInput('');
+      setCouponInput("");
     } else {
-      setCouponError('El cupón ingresado no es válido o ha expirado');
+      setCouponError("El cupón ingresado no es válido o ha expirado");
     }
   };
 
   const handleRemoveCoupon = () => {
     setAppliedCoupon(null);
-    setCouponError('');
+    setCouponError("");
   };
 
   // Validación antes de enviar WhatsApp
   const validateCheckout = (): boolean => {
     const errors: { customerName?: string; phone?: string; address?: string } = {};
     if (!formData.customerName.trim()) {
-      errors.customerName = 'Por favor ingresá tu nombre y apellido';
+      errors.customerName = "Por favor ingresá tu nombre y apellido";
     }
     if (!formData.phone.trim()) {
-      errors.phone = 'Por favor ingresá tu número de teléfono o WhatsApp';
+      errors.phone = "Por favor ingresá tu número de teléfono o WhatsApp";
     }
-    if (formData.deliveryType === 'BUYER_SHIPPING' && !formData.address?.trim()) {
-      errors.address = 'Por favor ingresá la dirección para coordinar el envío';
+    if (formData.deliveryType === "BUYER_SHIPPING" && !formData.address?.trim()) {
+      errors.address = "Por favor ingresá la dirección para coordinar el envío";
     }
     setFormErrors(errors);
     return Object.keys(errors).length === 0;
@@ -127,14 +156,16 @@ export default function CarritoCheckoutPage() {
 
     const enrichedData: CheckoutFormData = {
       ...formData,
+      orderNumber,
       couponCode: appliedCoupon?.code,
       couponDiscount,
+      productDiscountTotal,
       spendDiscount,
       finalTotal,
     };
 
     const url = getWhatsAppOrderUrl(enrichedData, items, subtotal);
-    window.open(url, '_blank', 'noopener,noreferrer');
+    window.open(url, "_blank", "noopener,noreferrer");
   };
 
   return (
@@ -144,7 +175,6 @@ export default function CarritoCheckoutPage() {
 
       <main className="flex-grow py-8 sm:py-12">
         <div className="container mx-auto px-4 max-w-6xl">
-          
           {/* Breadcrumb de navegación */}
           <div className="mb-6 flex items-center justify-between">
             <Link
@@ -171,7 +201,8 @@ export default function CarritoCheckoutPage() {
               Finalizar Compra
             </h1>
             <p className="text-xs sm:text-sm text-slate-500 mt-1">
-              Revisá tus artículos, aplicá tus beneficios y enviá tu pedido directamente por WhatsApp sin necesidad de registrarte.
+              Revisá tus artículos, aplicá tus beneficios y enviá tu pedido directamente por
+              WhatsApp sin necesidad de registrarte.
             </p>
           </div>
 
@@ -185,7 +216,8 @@ export default function CarritoCheckoutPage() {
                 Tu carrito está vacío
               </h2>
               <p className="text-xs sm:text-sm text-slate-500 mb-6">
-                Aún no has agregado ningún producto al carrito. Mirá nuestro catálogo completo con precios actualizados.
+                Aún no has agregado ningún producto al carrito. Mirá nuestro catálogo completo con
+                precios actualizados.
               </p>
               <Link
                 href="/"
@@ -196,10 +228,8 @@ export default function CarritoCheckoutPage() {
             </div>
           ) : (
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-              
               {/* COLUMNA IZQUIERDA: DETALLE DEL CARRITO Y CUPONES (7 COLUMNAS) */}
               <div className="lg:col-span-7 space-y-5">
-                
                 {/* Banner de Promoción Activa (Configurada en Admin) */}
                 {promoProgress.isActive && (
                   <div className="bg-white rounded-2xl p-4 border border-cyan-100 shadow-xs">
@@ -208,15 +238,22 @@ export default function CarritoCheckoutPage() {
                         <Sparkles className="w-4 h-4 text-brand-cyan" />
                         {promoProgress.isReached ? (
                           <span className="text-emerald-700 font-bold">
-                            ¡Beneficio Desbloqueado! Tenés un {promoProgress.discountPercent}% OFF en tu pedido 🎉
+                            ¡Beneficio Desbloqueado! Tenés un {promoProgress.discountPercent}% OFF
+                            en tu pedido 🎉
                           </span>
                         ) : (
                           <span>
-                            Sumá <strong className="text-brand-cyan">{money(promoProgress.remaining)}</strong> para acceder al {promoProgress.discountPercent}% OFF
+                            Sumá{" "}
+                            <strong className="text-brand-cyan">
+                              {money(promoProgress.remaining)}
+                            </strong>{" "}
+                            para acceder al {promoProgress.discountPercent}% OFF
                           </span>
                         )}
                       </span>
-                      <span className="text-xs font-bold text-slate-500">{promoProgress.percentage}%</span>
+                      <span className="text-xs font-bold text-slate-500">
+                        {promoProgress.percentage}%
+                      </span>
                     </div>
                     <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
                       <div
@@ -233,15 +270,18 @@ export default function CarritoCheckoutPage() {
                     <span className="font-bold text-xs uppercase tracking-wider text-slate-600">
                       Artículos ({totalItems})
                     </span>
-                    <span className="text-xs text-slate-500">
-                      Precios oficiales de venta
-                    </span>
+                    <span className="text-xs text-slate-500">Precios oficiales de venta</span>
                   </div>
 
                   {items.map((item, idx) => {
-                    const hasDiscount = item.product.originalPrice && item.product.originalPrice > item.price;
+                    const hasDiscount =
+                      item.product.originalPrice && item.product.originalPrice > item.price;
                     const discountPct = hasDiscount
-                      ? Math.round(((item.product.originalPrice! - item.price) / item.product.originalPrice!) * 100)
+                      ? Math.round(
+                          ((item.product.originalPrice! - item.price) /
+                            item.product.originalPrice!) *
+                            100,
+                        )
                       : 0;
 
                     return (
@@ -268,7 +308,7 @@ export default function CarritoCheckoutPage() {
                           <h3 className="font-semibold text-sm sm:text-base text-slate-900 line-clamp-1 leading-snug">
                             {item.product.name}
                           </h3>
-                          
+
                           <div className="flex items-center gap-2 mt-1">
                             <span className="text-xs text-slate-600 font-medium bg-slate-100 px-2 py-0.5 rounded-md">
                               {item.selectedUnit}
@@ -286,16 +326,16 @@ export default function CarritoCheckoutPage() {
                                 {money(item.product.originalPrice!)}
                               </span>
                             )}
-                            <span className="text-xs text-slate-500">
-                              {money(item.price)} c/u
-                            </span>
+                            <span className="text-xs text-slate-500">{money(item.price)} c/u</span>
                           </div>
                         </div>
 
                         {/* Selector de Cantidad */}
                         <div className="flex items-center border border-slate-200 rounded-xl overflow-hidden bg-slate-50 shrink-0">
                           <button
-                            onClick={() => updateQuantity(item.product.id, item.quantity - 1, item.selectedUnit)}
+                            onClick={() =>
+                              updateQuantity(item.product.id, item.quantity - 1, item.selectedUnit)
+                            }
                             className="p-1.5 sm:p-2 text-slate-600 hover:bg-slate-200 transition-colors"
                             aria-label="Disminuir"
                           >
@@ -305,7 +345,9 @@ export default function CarritoCheckoutPage() {
                             {item.quantity}
                           </span>
                           <button
-                            onClick={() => updateQuantity(item.product.id, item.quantity + 1, item.selectedUnit)}
+                            onClick={() =>
+                              updateQuantity(item.product.id, item.quantity + 1, item.selectedUnit)
+                            }
                             className="p-1.5 sm:p-2 text-slate-600 hover:bg-slate-200 transition-colors"
                             aria-label="Aumentar"
                           >
@@ -342,7 +384,10 @@ export default function CarritoCheckoutPage() {
                     <div className="flex items-center justify-between p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-semibold">
                       <div className="flex items-center gap-2">
                         <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                        <span>Cupón <strong>{appliedCoupon.code}</strong> aplicado: {appliedCoupon.description} (-{money(couponDiscount)})</span>
+                        <span>
+                          Cupón <strong>{appliedCoupon.code}</strong> aplicado:{" "}
+                          {appliedCoupon.description} (-{money(couponDiscount)})
+                        </span>
                       </div>
                       <button
                         onClick={handleRemoveCoupon}
@@ -380,8 +425,11 @@ export default function CarritoCheckoutPage() {
                   <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200 text-amber-900 text-xs sm:text-sm flex items-start gap-3">
                     <AlertCircle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
                     <div>
-                      <strong className="font-bold block">Químicos Sueltos en presentaciones fijadas:</strong>
-                      El stock físico se confirma al momento de recibir el pedido en el mostrador del local comercial.
+                      <strong className="font-bold block">
+                        Químicos Sueltos en presentaciones fijadas:
+                      </strong>
+                      El stock físico se confirma al momento de recibir el pedido en el mostrador
+                      del local comercial.
                     </div>
                   </div>
                 )}
@@ -390,18 +438,32 @@ export default function CarritoCheckoutPage() {
               {/* COLUMNA DERECHA: FORMULARIO CHECKOUT Y ENVÍO POR WHATSAPP (5 COLUMNAS) */}
               <div className="lg:col-span-5 space-y-6">
                 <div className="bg-white rounded-3xl border border-slate-200 p-6 sm:p-7 shadow-sm space-y-6">
-                  
                   <div>
-                    <h2 className="text-lg font-display font-bold text-slate-900">
-                      Datos para el Pedido
-                    </h2>
+                    <div className="flex items-center justify-between">
+                      <h2 className="text-lg font-display font-bold text-slate-900">
+                        Datos para el Pedido
+                      </h2>
+                      {session?.user ? (
+                        <span className="text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200">
+                          Autocompletado
+                        </span>
+                      ) : (
+                        <Link
+                          href="/login?callbackUrl=/carrito"
+                          className="text-xs font-semibold text-[#377b88] hover:underline"
+                        >
+                          ¿Tenés cuenta? Iniciá sesión
+                        </Link>
+                      )}
+                    </div>
                     <p className="text-xs text-slate-500 mt-0.5">
-                      Completá tus datos básicos (no necesitás tener una cuenta).
+                      {session?.user
+                        ? `Completamos tus datos con tu cuenta (${session.user.name}).`
+                        : "Completá tus datos básicos (no necesitás tener una cuenta)."}
                     </p>
                   </div>
 
                   <form id="full-checkout-form" onSubmit={handleSendWhatsApp} className="space-y-4">
-                    
                     {/* Nombre y Apellido */}
                     <div>
                       <label className="block text-xs font-semibold text-slate-700 mb-1">
@@ -446,11 +508,11 @@ export default function CarritoCheckoutPage() {
                       <div className="grid grid-cols-2 gap-2">
                         <button
                           type="button"
-                          onClick={() => setFormData({ ...formData, deliveryType: 'PICKUP' })}
+                          onClick={() => setFormData({ ...formData, deliveryType: "PICKUP" })}
                           className={`p-3 rounded-xl border text-xs font-semibold flex flex-col items-center justify-center gap-1.5 transition-all cursor-pointer ${
-                            formData.deliveryType === 'PICKUP'
-                              ? 'bg-brand-cyan text-white border-brand-cyan shadow-sm font-bold'
-                              : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
+                            formData.deliveryType === "PICKUP"
+                              ? "bg-brand-cyan text-white border-brand-cyan shadow-sm font-bold"
+                              : "bg-white text-slate-700 border-slate-300 hover:bg-slate-50"
                           }`}
                         >
                           <Store className="w-4 h-4" />
@@ -459,11 +521,13 @@ export default function CarritoCheckoutPage() {
 
                         <button
                           type="button"
-                          onClick={() => setFormData({ ...formData, deliveryType: 'BUYER_SHIPPING' })}
+                          onClick={() =>
+                            setFormData({ ...formData, deliveryType: "BUYER_SHIPPING" })
+                          }
                           className={`p-3 rounded-xl border text-xs font-semibold flex flex-col items-center justify-center gap-1.5 transition-all cursor-pointer ${
-                            formData.deliveryType === 'BUYER_SHIPPING'
-                              ? 'bg-brand-cyan text-white border-brand-cyan shadow-sm font-bold'
-                              : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50'
+                            formData.deliveryType === "BUYER_SHIPPING"
+                              ? "bg-brand-cyan text-white border-brand-cyan shadow-sm font-bold"
+                              : "bg-white text-slate-700 border-slate-300 hover:bg-slate-50"
                           }`}
                         >
                           <Bike className="w-4 h-4" />
@@ -473,7 +537,7 @@ export default function CarritoCheckoutPage() {
                     </div>
 
                     {/* DETALLES SEGÚN MODALIDAD */}
-                    {formData.deliveryType === 'PICKUP' ? (
+                    {formData.deliveryType === "PICKUP" ? (
                       <div className="p-3.5 rounded-2xl bg-cyan-50/70 border border-cyan-200 text-xs text-brand-blue space-y-2 animate-in fade-in duration-200">
                         <div className="flex items-center gap-1.5 font-bold">
                           <Store className="w-4 h-4 text-brand-cyan" />
@@ -488,13 +552,23 @@ export default function CarritoCheckoutPage() {
                           </label>
                           <select
                             value={formData.pickupTimeSlot}
-                            onChange={(e) => setFormData({ ...formData, pickupTimeSlot: e.target.value })}
+                            onChange={(e) =>
+                              setFormData({ ...formData, pickupTimeSlot: e.target.value })
+                            }
                             className="w-full text-xs px-3 py-1.5 rounded-lg border border-slate-300 bg-white font-medium text-slate-800 focus:border-brand-cyan outline-none"
                           >
-                            <option value="Mañana (8:30 a 12:30 hs)">Mañana: 8:30 a 12:30 hs</option>
-                            <option value="Tarde (16:00 a 20:00 hs)">Tarde: 16:00 a 20:00 hs</option>
-                            <option value="Sábado (9:00 a 12:30 hs)">Sábado: 9:00 a 12:30 hs</option>
-                            <option value="A coordinar por WhatsApp">A coordinar por WhatsApp</option>
+                            <option value="Mañana (8:30 a 12:30 hs)">
+                              Mañana: 8:30 a 12:30 hs
+                            </option>
+                            <option value="Tarde (16:00 a 20:00 hs)">
+                              Tarde: 16:00 a 20:00 hs
+                            </option>
+                            <option value="Sábado (9:00 a 12:30 hs)">
+                              Sábado: 9:00 a 12:30 hs
+                            </option>
+                            <option value="A coordinar por WhatsApp">
+                              A coordinar por WhatsApp
+                            </option>
                           </select>
                         </div>
                       </div>
@@ -505,7 +579,9 @@ export default function CarritoCheckoutPage() {
                             <Bike className="w-3.5 h-3.5 text-brand-cyan" />
                             Envío a cargo del comprador:
                           </p>
-                          El costo de cadetería o comisionista corre por cuenta del comprador al recibir el pedido. Podés enviar a quien desees a retirar o coordinamos el envío juntos por WhatsApp.
+                          El costo de cadetería o comisionista corre por cuenta del comprador al
+                          recibir el pedido. Podés enviar a quien desees a retirar o coordinamos el
+                          envío juntos por WhatsApp.
                         </div>
 
                         <div>
@@ -516,7 +592,7 @@ export default function CarritoCheckoutPage() {
                             type="text"
                             required
                             placeholder="Calle, número, depto o timbre"
-                            value={formData.address || ''}
+                            value={formData.address || ""}
                             onChange={(e) => setFormData({ ...formData, address: e.target.value })}
                             className="w-full text-xs sm:text-sm px-3.5 py-2.5 rounded-xl border border-slate-300 focus:border-brand-cyan focus:ring-2 focus:ring-brand-cyan/20 outline-none transition-all"
                           />
@@ -532,8 +608,10 @@ export default function CarritoCheckoutPage() {
                           <input
                             type="text"
                             placeholder="Ej: Portón verde entre Artigas y Congreso"
-                            value={formData.cornerStreet || ''}
-                            onChange={(e) => setFormData({ ...formData, cornerStreet: e.target.value })}
+                            value={formData.cornerStreet || ""}
+                            onChange={(e) =>
+                              setFormData({ ...formData, cornerStreet: e.target.value })
+                            }
                             className="w-full text-xs sm:text-sm px-3.5 py-2.5 rounded-xl border border-slate-300 focus:border-brand-cyan focus:ring-2 focus:ring-brand-cyan/20 outline-none transition-all"
                           />
                         </div>
@@ -551,8 +629,10 @@ export default function CarritoCheckoutPage() {
                             type="radio"
                             name="paymentMethod"
                             value="TRANSFERENCIA"
-                            checked={formData.paymentMethod === 'TRANSFERENCIA'}
-                            onChange={() => setFormData({ ...formData, paymentMethod: 'TRANSFERENCIA' })}
+                            checked={formData.paymentMethod === "TRANSFERENCIA"}
+                            onChange={() =>
+                              setFormData({ ...formData, paymentMethod: "TRANSFERENCIA" })
+                            }
                             className="text-brand-cyan focus:ring-brand-cyan"
                           />
                           <span>Transferencia</span>
@@ -563,14 +643,41 @@ export default function CarritoCheckoutPage() {
                             type="radio"
                             name="paymentMethod"
                             value="EFECTIVO"
-                            checked={formData.paymentMethod === 'EFECTIVO'}
-                            onChange={() => setFormData({ ...formData, paymentMethod: 'EFECTIVO' })}
+                            checked={formData.paymentMethod === "EFECTIVO"}
+                            onChange={() => setFormData({ ...formData, paymentMethod: "EFECTIVO" })}
                             className="text-brand-cyan focus:ring-brand-cyan"
                           />
                           <span>Efectivo</span>
                         </label>
                       </div>
                     </div>
+
+                    {/* Preferencia si hay productos sueltos */}
+                    {hasInquiryItems && (
+                      <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 space-y-2">
+                        <p className="text-xs font-semibold text-amber-900">
+                          Tu pedido incluye productos sueltos (sujeto a disponibilidad en el local):
+                        </p>
+                        <select
+                          value={formData.bulkPreference}
+                          onChange={(e) =>
+                            setFormData({
+                              ...formData,
+                              bulkPreference: e.target.value as
+                                "Consultar reemplazo" | "Quitar del pedido",
+                            })
+                          }
+                          className="w-full text-xs px-3 py-1.5 rounded-lg border border-amber-300 bg-white font-medium text-slate-800 outline-none"
+                        >
+                          <option value="Consultar reemplazo">
+                            Si no hay stock, consultarme reemplazo por WhatsApp
+                          </option>
+                          <option value="Quitar del pedido">
+                            Si no hay stock, quitar ese producto del pedido
+                          </option>
+                        </select>
+                      </div>
+                    )}
 
                     {/* Notas adicionales */}
                     <div>
@@ -580,7 +687,7 @@ export default function CarritoCheckoutPage() {
                       <textarea
                         rows={2}
                         placeholder="Ej: Si no hay de 5L avisarme para llevar de 2L..."
-                        value={formData.notes || ''}
+                        value={formData.notes || ""}
                         onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
                         className="w-full text-xs sm:text-sm px-3.5 py-2 rounded-xl border border-slate-300 focus:border-brand-cyan focus:ring-2 focus:ring-brand-cyan/20 outline-none transition-all resize-none"
                       />
@@ -594,6 +701,13 @@ export default function CarritoCheckoutPage() {
                         <span>Subtotal ({totalItems} productos)</span>
                         <span>{money(subtotal)}</span>
                       </div>
+
+                      {productDiscountTotal > 0 && (
+                        <div className="flex justify-between text-xs text-emerald-600 font-bold">
+                          <span>Ahorro en productos en oferta</span>
+                          <span>-{money(productDiscountTotal)}</span>
+                        </div>
+                      )}
 
                       {spendDiscount > 0 && (
                         <div className="flex justify-between text-xs text-emerald-600 font-bold">
@@ -611,7 +725,9 @@ export default function CarritoCheckoutPage() {
 
                       <div className="flex justify-between text-base sm:text-lg font-display font-extrabold text-slate-900 pt-2 border-t border-slate-100">
                         <span>Total Estimado</span>
-                        <span className="text-xl sm:text-2xl text-brand-blue">{money(finalTotal)}</span>
+                        <span className="text-xl sm:text-2xl text-brand-blue">
+                          {money(finalTotal)}
+                        </span>
                       </div>
                     </div>
 
@@ -631,7 +747,11 @@ export default function CarritoCheckoutPage() {
                       className="w-full text-xs text-slate-500 hover:text-slate-800 transition-colors flex items-center justify-center gap-1 font-medium cursor-pointer"
                     >
                       <FileText className="w-3.5 h-3.5" />
-                      <span>{showPreview ? 'Ocultar vista previa del mensaje' : 'Ver mensaje exacto que se enviará'}</span>
+                      <span>
+                        {showPreview
+                          ? "Ocultar vista previa del mensaje"
+                          : "Ver mensaje exacto que se enviará"}
+                      </span>
                     </button>
 
                     {showPreview && (
@@ -639,23 +759,23 @@ export default function CarritoCheckoutPage() {
                         {buildWhatsAppOrderMessage(
                           {
                             ...formData,
+                            orderNumber,
                             couponCode: appliedCoupon?.code,
                             couponDiscount,
+                            productDiscountTotal,
                             spendDiscount,
                             finalTotal,
                           },
                           items,
-                          subtotal
+                          subtotal,
                         )}
                       </pre>
                     )}
                   </div>
                 </div>
               </div>
-
             </div>
           )}
-
         </div>
       </main>
 
